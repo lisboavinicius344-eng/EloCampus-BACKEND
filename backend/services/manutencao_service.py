@@ -1,11 +1,29 @@
+import logging
 from datetime import datetime, timezone
 
 from database.conexao import Conexao
+from services.n8n_service import notificar_manutencao
+
+
+logger = logging.getLogger(__name__)
 
 
 class ManutencaoService:
 
     STATUS_VALIDOS = ("aberta", "em_andamento", "concluida", "cancelada")
+
+    @staticmethod
+    def _notificar_com_seguranca(manutencao, evento):
+        if manutencao is None:
+            return
+
+        try:
+            notificar_manutencao(manutencao, evento)
+        except Exception:
+            logger.exception(
+                "Falha ao notificar o n8n sobre o evento %s.",
+                evento,
+            )
 
     def listar(self):
         with Conexao.conectar() as conexao:
@@ -144,7 +162,7 @@ class ManutencaoService:
                     descricao.strip(),
                     datetime.now(timezone.utc),
                     "aberta",
-                    observacoes
+                    observacoes,
                 ))
 
                 manutencao_id = cursor.fetchone()[0]
@@ -155,7 +173,13 @@ class ManutencaoService:
                     WHERE id = %s
                 """, (equipamento_id,))
 
-        return self.obter_por_id(manutencao_id)
+        manutencao_criada = self.obter_por_id(manutencao_id)
+        self._notificar_com_seguranca(
+            manutencao_criada,
+            "manutencao_aberta",
+        )
+
+        return manutencao_criada
 
     def finalizar(self, manutencao_id, dados):
         solucao = dados.get("solucao")
@@ -211,7 +235,7 @@ class ManutencaoService:
                     datetime.now(timezone.utc),
                     solucao.strip(),
                     observacoes,
-                    manutencao_id
+                    manutencao_id,
                 ))
 
                 cursor.execute("""
@@ -221,7 +245,13 @@ class ManutencaoService:
                       AND status = 'manutencao'
                 """, (equipamento_id,))
 
-        return self.obter_por_id(manutencao_id)
+        manutencao_finalizada = self.obter_por_id(manutencao_id)
+        self._notificar_com_seguranca(
+            manutencao_finalizada,
+            "manutencao_finalizada",
+        )
+
+        return manutencao_finalizada
 
     @staticmethod
     def _para_dict(registro):
@@ -241,5 +271,5 @@ class ManutencaoService:
             ),
             "status": registro[9],
             "solucao": registro[10],
-            "observacoes": registro[11]
+            "observacoes": registro[11],
         }
