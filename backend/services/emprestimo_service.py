@@ -5,6 +5,10 @@ import psycopg
 
 from database.conexao import Conexao
 from models.emprestimo import Emprestimo
+from services.n8n_service import (
+    notificar_novo_emprestimo,
+    notificar_devolucao_equipamento,
+)
 
 
 class EmprestimoService:
@@ -88,7 +92,7 @@ class EmprestimoService:
                     item[3].isoformat() if item[3] else None
                 ),
                 "estado_na_devolucao": item[4],
-                "observacoes": item[5]
+                "observacoes": item[5],
             }
             for item in itens
         ]
@@ -141,7 +145,7 @@ class EmprestimoService:
         Emprestimo(
             solicitante_id,
             usuario_id,
-            data_prevista
+            data_prevista,
         )
 
         try:
@@ -208,7 +212,7 @@ class EmprestimoService:
                         solicitante_id,
                         usuario_id,
                         data_prevista,
-                        dados.get("observacoes")
+                        dados.get("observacoes"),
                     ))
                     emprestimo_id = cursor.fetchone()[0]
 
@@ -244,7 +248,7 @@ class EmprestimoService:
                             usuario_id,
                             emprestimo_id,
                             "emprestimo",
-                            "Equipamento emprestado."
+                            "Equipamento emprestado.",
                         ))
 
         except ValueError:
@@ -256,7 +260,12 @@ class EmprestimoService:
                 ) from None
             raise
 
-        return self.obter_por_id(emprestimo_id)
+        emprestimo = self.obter_por_id(emprestimo_id)
+
+        if emprestimo is not None:
+            notificar_novo_emprestimo(emprestimo)
+
+        return emprestimo
 
     def devolver_equipamento(
         self,
@@ -264,7 +273,7 @@ class EmprestimoService:
         equipamento_id,
         estado_na_devolucao,
         usuario_id,
-        observacoes=None
+        observacoes=None,
     ):
         estados_validos = ("novo", "bom", "regular", "danificado")
 
@@ -330,7 +339,7 @@ class EmprestimoService:
                 """, (
                     estado_na_devolucao,
                     observacoes,
-                    item[0]
+                    item[0],
                 ))
 
                 novo_status = (
@@ -347,7 +356,7 @@ class EmprestimoService:
                 """, (
                     novo_status,
                     estado_na_devolucao,
-                    equipamento_id
+                    equipamento_id,
                 ))
 
                 cursor.execute("""
@@ -364,7 +373,7 @@ class EmprestimoService:
                     usuario_id,
                     emprestimo_id,
                     "devolucao",
-                    "Equipamento devolvido."
+                    "Equipamento devolvido.",
                 ))
 
                 cursor.execute("""
@@ -382,7 +391,17 @@ class EmprestimoService:
                         WHERE id = %s
                     """, (emprestimo_id,))
 
-        return self.obter_por_id(emprestimo_id)
+        emprestimo_atualizado = self.obter_por_id(emprestimo_id)
+
+        if emprestimo_atualizado is not None:
+            notificar_devolucao_equipamento(
+                emprestimo_atualizado,
+                equipamento_id,
+                estado_na_devolucao,
+                usuario_id,
+            )
+
+        return emprestimo_atualizado
 
     @staticmethod
     def _para_dict(r):
@@ -397,5 +416,5 @@ class EmprestimoService:
                 r[6].isoformat() if r[6] else None
             ),
             "status": r[7],
-            "observacoes": r[8]
+            "observacoes": r[8],
         }

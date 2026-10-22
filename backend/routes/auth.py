@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, request
 
 from services.auth_service import AuthService
 from services.auth_token import gerar_token
+from services.n8n_service import notificar_cadastro_aluno
 
 auth_bp = Blueprint(
     "auth",
@@ -42,6 +43,7 @@ def cadastrar_aluno():
 
     try:
         usuario = AuthService.cadastrar_aluno(dados)
+        notificar_cadastro_aluno(usuario)
         return jsonify({
             "mensagem": "Conta de aluno criada com sucesso.",
             "usuario": usuario
