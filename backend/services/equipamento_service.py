@@ -63,9 +63,14 @@ class EquipamentoService:
             with Conexao.conectar() as conexao:
                 with conexao.cursor() as cursor:
                     cursor.execute(
-                        "SELECT id FROM categorias WHERE id = %s AND ativo = TRUE",
+                        """
+                        SELECT id
+                        FROM categorias
+                        WHERE id = %s AND ativo = TRUE
+                        """,
                         (equipamento["categoria_id"],)
                     )
+
                     if cursor.fetchone() is None:
                         raise ValueError(
                             "Categoria não encontrada ou inativa."
@@ -96,6 +101,7 @@ class EquipamentoService:
                         equipamento["qr_code"],
                         equipamento["observacoes"]
                     ))
+
                     equipamento_id = cursor.fetchone()[0]
 
         except psycopg.errors.UniqueViolation:
@@ -111,23 +117,59 @@ class EquipamentoService:
         try:
             with Conexao.conectar() as conexao:
                 with conexao.cursor() as cursor:
-                    cursor.execute(
-                        "SELECT id FROM equipamentos WHERE id = %s FOR UPDATE",
-                        (equipamento_id,)
-                    )
-                    if cursor.fetchone() is None:
+                    cursor.execute("""
+                        SELECT id, status, estado_conservacao
+                        FROM equipamentos
+                        WHERE id = %s
+                        FOR UPDATE
+                    """, (equipamento_id,))
+
+                    equipamento_atual = cursor.fetchone()
+
+                    if equipamento_atual is None:
                         return None
 
+                    status_atual = equipamento_atual[1]
+                    estado_atual = equipamento_atual[2]
+                    novo_estado = equipamento["estado_conservacao"]
+
+                    if status_atual == "emprestado":
+                        if novo_estado != estado_atual:
+                            raise ValueError(
+                                "Não é permitido alterar a conservação "
+                                "de um equipamento emprestado. Atualize "
+                                "a conservação durante a devolução."
+                            )
+
                     cursor.execute(
-                        "SELECT id FROM categorias WHERE id = %s AND ativo = TRUE",
+                        """
+                        SELECT id
+                        FROM categorias
+                        WHERE id = %s AND ativo = TRUE
+                        """,
                         (equipamento["categoria_id"],)
                     )
+
                     if cursor.fetchone() is None:
                         raise ValueError(
                             "Categoria não encontrada ou inativa."
                         )
 
-                    # Evita alterar o status operacional por esta rota.
+                    # O status operacional não é recebido livremente
+                    # do cliente. A conservação danificada exige
+                    # manutenção, exceto durante um empréstimo.
+                    if status_atual == "emprestado":
+                        novo_status = status_atual
+
+                    elif status_atual == "baixado":
+                        novo_status = status_atual
+
+                    elif novo_estado == "danificado":
+                        novo_status = "manutencao"
+
+                    else:
+                        novo_status = "disponivel"
+
                     cursor.execute("""
                         UPDATE equipamentos
                         SET nome = %s,
@@ -136,6 +178,7 @@ class EquipamentoService:
                             setor = %s,
                             localizacao = %s,
                             estado_conservacao = %s,
+                            status = %s,
                             qr_code = %s,
                             observacoes = %s
                         WHERE id = %s
@@ -145,7 +188,8 @@ class EquipamentoService:
                         equipamento["categoria_id"],
                         equipamento["setor"],
                         equipamento["localizacao"],
-                        equipamento["estado_conservacao"],
+                        novo_estado,
+                        novo_status,
                         equipamento["qr_code"],
                         equipamento["observacoes"],
                         equipamento_id
@@ -167,6 +211,7 @@ class EquipamentoService:
                     WHERE id = %s
                     FOR UPDATE
                 """, (equipamento_id,))
+
                 registro = cursor.fetchone()
 
                 if registro is None:
@@ -191,20 +236,29 @@ class EquipamentoService:
     @staticmethod
     def _validar_dados(dados):
         nome = dados.get("nome")
+
         if not isinstance(nome, str) or not nome.strip():
             raise ValueError("O nome do equipamento é obrigatório.")
 
         try:
             categoria_id = int(dados.get("categoria_id"))
+
             if categoria_id <= 0:
                 raise ValueError
+
         except (TypeError, ValueError):
             raise ValueError(
                 "Informe um categoria_id válido."
             ) from None
 
         estado = dados.get("estado_conservacao", "bom")
-        status = dados.get("status", "disponivel")
+
+        # O cliente não escolhe livremente o status operacional.
+        status = (
+            "manutencao"
+            if estado == "danificado"
+            else "disponivel"
+        )
 
         equipamento = Equipamento(
             nome=nome,
@@ -219,11 +273,13 @@ class EquipamentoService:
         )
 
         patrimonio = equipamento.numero_patrimonio
+
         if patrimonio is not None:
             if not isinstance(patrimonio, str):
                 raise ValueError(
                     "O número de patrimônio deve ser um texto."
                 )
+
             patrimonio = patrimonio.strip() or None
 
         return {
@@ -252,5 +308,9 @@ class EquipamentoService:
             "status": registro[8],
             "qr_code": registro[9],
             "observacoes": registro[10],
-            "criado_em": registro[11].isoformat()
+            "criado_em": (
+                registro[11].isoformat()
+                if registro[11] is not None
+                else None
+            )
         }
