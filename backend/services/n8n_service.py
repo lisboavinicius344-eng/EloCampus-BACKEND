@@ -144,3 +144,10 @@ def notificar_equipamento(equipamento, evento):
         {"equipamento": equipamento},
     )
 
+def notificar_manutencao(manutencao, evento):
+    return _notificar(
+        "N8N_MANUTENCAO_WEBHOOK_URL",
+        evento,
+        {"manutencao": manutencao},
+    )
+

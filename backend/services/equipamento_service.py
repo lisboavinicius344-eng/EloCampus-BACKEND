@@ -1,10 +1,29 @@
+import logging
+
 import psycopg
 
 from database.conexao import Conexao
 from models.equipamento import Equipamento
+from services.n8n_service import notificar_equipamento
+
+
+logger = logging.getLogger(__name__)
 
 
 class EquipamentoService:
+
+    @staticmethod
+    def _notificar_com_seguranca(equipamento, evento):
+        if equipamento is None:
+            return
+
+        try:
+            notificar_equipamento(equipamento, evento)
+        except Exception:
+            logger.exception(
+                "Falha ao notificar o n8n sobre o evento %s.",
+                evento,
+            )
 
     def listar(self):
         with Conexao.conectar() as conexao:
@@ -109,7 +128,13 @@ class EquipamentoService:
                 "Já existe um equipamento com esse número de patrimônio."
             ) from None
 
-        return self.obter_por_id(equipamento_id)
+        equipamento_criado = self.obter_por_id(equipamento_id)
+        self._notificar_com_seguranca(
+            equipamento_criado,
+            "equipamento_cadastrado",
+        )
+
+        return equipamento_criado
 
     def atualizar(self, equipamento_id, dados):
         equipamento = self._validar_dados(dados)
@@ -200,7 +225,13 @@ class EquipamentoService:
                 "Já existe um equipamento com esse número de patrimônio."
             ) from None
 
-        return self.obter_por_id(equipamento_id)
+        equipamento_atualizado = self.obter_por_id(equipamento_id)
+        self._notificar_com_seguranca(
+            equipamento_atualizado,
+            "equipamento_atualizado",
+        )
+
+        return equipamento_atualizado
 
     def inativar(self, equipamento_id):
         with Conexao.conectar() as conexao:
@@ -231,7 +262,13 @@ class EquipamentoService:
                     WHERE id = %s
                 """, (equipamento_id,))
 
-        return self.obter_por_id(equipamento_id)
+        equipamento_baixado = self.obter_por_id(equipamento_id)
+        self._notificar_com_seguranca(
+            equipamento_baixado,
+            "equipamento_baixado",
+        )
+
+        return equipamento_baixado
 
     @staticmethod
     def _validar_dados(dados):

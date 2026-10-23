@@ -1,11 +1,35 @@
 
+import logging
 from datetime import datetime
 
 from database.conexao import Conexao
 from models.reserva import Reserva
+from services.n8n_service import notificar_reserva
+
+
+logger = logging.getLogger(__name__)
 
 
 class ReservaService:
+
+    EVENTOS_POR_OPERACAO = {
+        "aprovar": "reserva_aprovada",
+        "rejeitar": "reserva_rejeitada",
+        "cancelar": "reserva_cancelada",
+    }
+
+    @staticmethod
+    def _notificar_com_seguranca(reserva, evento):
+        if reserva is None:
+            return
+
+        try:
+            notificar_reserva(reserva, evento)
+        except Exception:
+            logger.exception(
+                "Falha ao notificar o n8n sobre o evento %s.",
+                evento,
+            )
 
     def listar(self):
         with Conexao.conectar() as conexao:
@@ -300,7 +324,10 @@ class ReservaService:
                         VALUES (%s, %s)
                     """, (reserva_id, equipamento_id))
 
-        return self.obter_por_id(reserva_id)
+        reserva = self.obter_por_id(reserva_id)
+        self._notificar_com_seguranca(reserva, "nova_reserva")
+
+        return reserva
 
     def alterar_status(
         self,
@@ -429,7 +456,13 @@ class ReservaService:
                     WHERE id = %s
                 """, (status_novo, reserva_id))
 
-        return self.obter_por_id(reserva_id)
+        reserva_atualizada = self.obter_por_id(reserva_id)
+        self._notificar_com_seguranca(
+            reserva_atualizada,
+            self.EVENTOS_POR_OPERACAO[operacao],
+        )
+
+        return reserva_atualizada
 
     @staticmethod
     def _para_dict(registro):
