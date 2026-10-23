@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
 
+from services.auth_token import requer_papeis
 from services.manutencao_service import ManutencaoService
 
 
@@ -13,6 +14,7 @@ manutencao_service = ManutencaoService()
 
 
 @manutencoes_bp.route("/", methods=["GET"])
+@requer_papeis("admin", "operador")
 def listar_manutencoes():
     return jsonify({
         "manutencoes": manutencao_service.listar()
@@ -20,6 +22,7 @@ def listar_manutencoes():
 
 
 @manutencoes_bp.route("/<int:manutencao_id>", methods=["GET"])
+@requer_papeis("admin", "operador")
 def obter_manutencao(manutencao_id):
     manutencao = manutencao_service.obter_por_id(manutencao_id)
 
@@ -34,6 +37,7 @@ def obter_manutencao(manutencao_id):
 
 
 @manutencoes_bp.route("/", methods=["POST"])
+@requer_papeis("admin", "operador")
 def cadastrar_manutencao():
     dados = request.get_json(silent=True)
 
@@ -58,6 +62,7 @@ def cadastrar_manutencao():
     "/<int:manutencao_id>/finalizar",
     methods=["PATCH"]
 )
+@requer_papeis("admin", "operador")
 def finalizar_manutencao(manutencao_id):
     dados = request.get_json(silent=True)
 

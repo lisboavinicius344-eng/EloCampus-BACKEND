@@ -5,6 +5,7 @@ import psycopg
 
 from database.conexao import Conexao
 from models.emprestimo import Emprestimo
+from services.elegibilidade import verificar_elegibilidade
 from services.n8n_service import (
     notificar_novo_emprestimo,
     notificar_devolucao_equipamento,
@@ -142,6 +143,17 @@ class EmprestimoService:
                 "Data inválida. Use o formato ISO 8601."
             ) from None
 
+        agora = (
+            datetime.now(data_prevista.tzinfo)
+            if data_prevista.tzinfo
+            else datetime.now()
+        )
+
+        if data_prevista <= agora:
+            raise ValueError(
+                "A data prevista de devolução deve ser no futuro."
+            )
+
         Emprestimo(
             solicitante_id,
             usuario_id,
@@ -152,12 +164,14 @@ class EmprestimoService:
             with Conexao.conectar() as conexao:
                 with conexao.cursor() as cursor:
                     cursor.execute("""
-                        SELECT id
+                        SELECT tipo
                         FROM solicitantes
                         WHERE id = %s AND ativo = TRUE
                     """, (solicitante_id,))
 
-                    if cursor.fetchone() is None:
+                    solicitante = cursor.fetchone()
+
+                    if solicitante is None:
                         raise ValueError(
                             "Solicitante não encontrado ou inativo."
                         )
@@ -198,6 +212,8 @@ class EmprestimoService:
                             raise ValueError(
                                 f"Equipamento {equipamento[0]} está danificado."
                             )
+
+                    verificar_elegibilidade(cursor, solicitante[0], itens)
 
                     cursor.execute("""
                         INSERT INTO emprestimos (

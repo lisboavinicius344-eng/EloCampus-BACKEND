@@ -1,6 +1,10 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 from services.solicitante_service import SolicitanteService
-from services.auth_token import requer_autenticacao, requer_papeis
+from services.auth_token import (
+    PAPEIS_USUARIO_FINAL,
+    requer_autenticacao,
+    requer_papeis,
+)
 
 solicitantes_bp = Blueprint(
     "solicitantes",
@@ -12,7 +16,7 @@ solicitante_service = SolicitanteService()
 
 
 @solicitantes_bp.route("/", methods=["GET"])
-@requer_autenticacao
+@requer_papeis("admin", "operador")
 def listar_solicitantes():
     return jsonify({
         "solicitantes": solicitante_service.listar()
@@ -22,6 +26,13 @@ def listar_solicitantes():
 @solicitantes_bp.route("/<int:solicitante_id>", methods=["GET"])
 @requer_autenticacao
 def obter_solicitante(solicitante_id):
+    # Aluno e professor só podem consultar o próprio cadastro.
+    if (
+        g.usuario["papel"] in PAPEIS_USUARIO_FINAL
+        and g.usuario["solicitante_id"] != solicitante_id
+    ):
+        return jsonify({"erro": "Permissão insuficiente."}), 403
+
     solicitante = solicitante_service.obter_por_id(solicitante_id)
 
     if solicitante is None:

@@ -4,10 +4,13 @@ import psycopg
 
 from database.conexao import Conexao
 from models.equipamento import Equipamento
+from services.painel_service import SITUACAO_SQL
 from services.n8n_service import notificar_equipamento
 
 
 logger = logging.getLogger(__name__)
+
+ELEGIBILIDADES_VALIDAS = ("todos", "somente_funcionarios")
 
 
 class EquipamentoService:
@@ -28,7 +31,7 @@ class EquipamentoService:
     def listar(self):
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT
                         e.id,
                         e.nome,
@@ -41,7 +44,9 @@ class EquipamentoService:
                         e.status,
                         e.qr_code,
                         e.observacoes,
-                        e.criado_em
+                        e.criado_em,
+                        e.elegibilidade,
+                        {SITUACAO_SQL} AS situacao
                     FROM equipamentos e
                     JOIN categorias c ON c.id = e.categoria_id
                     ORDER BY e.id
@@ -53,7 +58,7 @@ class EquipamentoService:
     def obter_por_id(self, equipamento_id):
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT
                         e.id,
                         e.nome,
@@ -66,7 +71,9 @@ class EquipamentoService:
                         e.status,
                         e.qr_code,
                         e.observacoes,
-                        e.criado_em
+                        e.criado_em,
+                        e.elegibilidade,
+                        {SITUACAO_SQL} AS situacao
                     FROM equipamentos e
                     JOIN categorias c ON c.id = e.categoria_id
                     WHERE e.id = %s
@@ -105,9 +112,10 @@ class EquipamentoService:
                             estado_conservacao,
                             status,
                             qr_code,
-                            observacoes
+                            observacoes,
+                            elegibilidade
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         RETURNING id
                     """, (
                         equipamento["nome"],
@@ -118,7 +126,8 @@ class EquipamentoService:
                         equipamento["estado_conservacao"],
                         equipamento["status"],
                         equipamento["qr_code"],
-                        equipamento["observacoes"]
+                        equipamento["observacoes"],
+                        equipamento.get("elegibilidade") or "todos"
                     ))
 
                     equipamento_id = cursor.fetchone()[0]
@@ -205,7 +214,8 @@ class EquipamentoService:
                             estado_conservacao = %s,
                             status = %s,
                             qr_code = %s,
-                            observacoes = %s
+                            observacoes = %s,
+                            elegibilidade = COALESCE(%s, elegibilidade)
                         WHERE id = %s
                     """, (
                         equipamento["nome"],
@@ -217,6 +227,7 @@ class EquipamentoService:
                         novo_status,
                         equipamento["qr_code"],
                         equipamento["observacoes"],
+                        equipamento.get("elegibilidade"),
                         equipamento_id
                     ))
 
@@ -309,6 +320,17 @@ class EquipamentoService:
             observacoes=dados.get("observacoes")
         )
 
+        elegibilidade = dados.get("elegibilidade")
+
+        if (
+            elegibilidade is not None
+            and elegibilidade not in ELEGIBILIDADES_VALIDAS
+        ):
+            raise ValueError(
+                "Elegibilidade inválida. Use: "
+                + ", ".join(ELEGIBILIDADES_VALIDAS) + "."
+            )
+
         patrimonio = equipamento.numero_patrimonio
 
         if patrimonio is not None:
@@ -328,7 +350,9 @@ class EquipamentoService:
             "estado_conservacao": equipamento.estado_conservacao,
             "status": equipamento.status,
             "qr_code": equipamento.qr_code,
-            "observacoes": equipamento.observacoes
+            "observacoes": equipamento.observacoes,
+            # None = não informado (na atualização, mantém o valor atual).
+            "elegibilidade": elegibilidade
         }
 
     @staticmethod
@@ -349,5 +373,7 @@ class EquipamentoService:
                 registro[11].isoformat()
                 if registro[11] is not None
                 else None
-            )
+            ),
+            "elegibilidade": registro[12],
+            "situacao": registro[13]
         }

@@ -1,0 +1,127 @@
+{
+  "name": "EloCampus - Cadastro de aluno",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cadastro-aluno",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.2,
+      "position": [-576, -32],
+      "id": "8ad25cde-8d8f-47c2-9324-68ac383f5050",
+      "name": "Webhook",
+      "webhookId": "3f0a7c52-6d1e-4c8b-9a51-0e2b7d4c1a90"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "b1d0f6a2-1c3e-4f5a-8b7c-9d0e1f2a3b4c",
+              "name": "evento",
+              "value": "={{ $json.body.evento }}",
+              "type": "string"
+            },
+            {
+              "id": "c2e1a7b3-2d4f-4a6b-9c8d-0e1f2a3b4c5d",
+              "name": "usuario_id",
+              "value": "={{ $json.body.usuario.id }}",
+              "type": "number"
+            },
+            {
+              "id": "d3f2b8c4-3e5a-4b7c-8d9e-1f2a3b4c5d6e",
+              "name": "nome",
+              "value": "={{ $json.body.usuario.nome }}",
+              "type": "string"
+            },
+            {
+              "id": "e4a3c9d5-4f6b-4c8d-9e0f-2a3b4c5d6e7f",
+              "name": "email",
+              "value": "={{ $json.body.usuario.email }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-400, -32],
+      "id": "65360dd8-bdda-4212-98db-c6b26f2b5a65",
+      "name": "Dados do aluno"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"recebido\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [-224, -32],
+      "id": "ff5af0eb-f771-4778-89c4-abf761e10878",
+      "name": "Responder ao backend"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $('Dados do aluno').item.json.email }}",
+        "subject": "Bem-vindo(a) ao ELO Campus",
+        "emailType": "html",
+        "message": "=<p>Olá, {{ $('Dados do aluno').item.json.nome }}!</p>\n<p>Sua conta no <strong>ELO Campus</strong> foi criada com sucesso.</p>\n<p>Agora você já pode entrar no sistema com o e-mail <strong>{{ $('Dados do aluno').item.json.email }}</strong> e a senha que cadastrou para consultar e reservar equipamentos.</p>\n<p>Se você não fez este cadastro, ignore esta mensagem ou procure o setor responsável.</p>\n<p>Equipe ELO Campus</p>",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [-48, -32],
+      "id": "db5b79bb-b679-44a9-9891-e2646eb6cd39",
+      "name": "Enviar e-mail de boas-vindas",
+      "webhookId": "7cb8ef2d-2535-4203-9811-0ae4f8935873"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Dados do aluno",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dados do aluno": {
+      "main": [
+        [
+          {
+            "node": "Responder ao backend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Responder ao backend": {
+      "main": [
+        [
+          {
+            "node": "Enviar e-mail de boas-vindas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

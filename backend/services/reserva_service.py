@@ -4,6 +4,7 @@ from datetime import datetime
 
 from database.conexao import Conexao
 from models.reserva import Reserva
+from services.elegibilidade import verificar_elegibilidade
 from services.n8n_service import notificar_reserva
 
 
@@ -203,12 +204,14 @@ class ReservaService:
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
                 cursor.execute("""
-                    SELECT id
+                    SELECT tipo
                     FROM solicitantes
                     WHERE id = %s AND ativo = TRUE
                 """, (solicitante_id,))
 
-                if cursor.fetchone() is None:
+                solicitante = cursor.fetchone()
+
+                if solicitante is None:
                     raise ValueError(
                         "Solicitante não encontrado ou inativo."
                     )
@@ -251,6 +254,8 @@ class ReservaService:
                     raise ValueError(
                         f"Equipamentos indisponíveis: {indisponiveis}."
                     )
+
+                verificar_elegibilidade(cursor, solicitante[0], ids)
 
                 # Verifica conflitos com reservas pendentes ou aprovadas.
                 cursor.execute("""

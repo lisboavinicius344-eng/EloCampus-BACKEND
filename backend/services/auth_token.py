@@ -7,6 +7,13 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from database.conexao import Conexao
 
 
+# Equipe que administra o sistema.
+PAPEIS_EQUIPE = ("admin", "operador")
+
+# Usuários finais: só acessam os próprios empréstimos e reservas.
+PAPEIS_USUARIO_FINAL = ("aluno", "professor")
+
+
 def _serializer():
     secret = os.getenv("FLASK_SECRET_KEY")
     if not secret:
@@ -18,48 +25,81 @@ def gerar_token(usuario_id):
     return _serializer().dumps({"usuario_id": usuario_id})
 
 
+def _usuario_do_token():
+    """Retorna (usuario, erro). Exatamente um dos dois é None."""
+    cabecalho = request.headers.get("Authorization", "")
+    esquema, _, token = cabecalho.partition(" ")
+
+    if esquema.lower() != "bearer" or not token:
+        return None, "Autenticação necessária."
+
+    try:
+        dados = _serializer().loads(token, max_age=3600)
+    except SignatureExpired:
+        return None, "Token expirado. Faça login novamente."
+    except BadSignature:
+        return None, "Token inválido."
+
+    usuario_id = dados.get("usuario_id")
+    if not isinstance(usuario_id, int):
+        return None, "Token inválido."
+
+    with Conexao.conectar() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, nome, email, papel, ativo, solicitante_id
+                FROM usuarios
+                WHERE id = %s
+                """,
+                (usuario_id,)
+            )
+            usuario = cur.fetchone()
+
+    if usuario is None or not usuario[4]:
+        return None, "Usuário inativo ou inexistente."
+
+    return {
+        "id": usuario[0],
+        "nome": usuario[1],
+        "email": usuario[2],
+        "papel": usuario[3],
+        "solicitante_id": usuario[5]
+    }, None
+
+
 def requer_autenticacao(f):
     @wraps(f)
     def decorada(*args, **kwargs):
-        cabecalho = request.headers.get("Authorization", "")
-        esquema, _, token = cabecalho.partition(" ")
+        usuario, erro = _usuario_do_token()
 
-        if esquema.lower() != "bearer" or not token:
-            return jsonify({"erro": "Autenticação necessária."}), 401
+        if erro:
+            return jsonify({"erro": erro}), 401
 
-        try:
-            dados = _serializer().loads(token, max_age=3600)
-        except SignatureExpired:
-            return jsonify({"erro": "Token expirado. Faça login novamente."}), 401
-        except BadSignature:
-            return jsonify({"erro": "Token inválido."}), 401
+        g.usuario = usuario
+        return f(*args, **kwargs)
 
-        usuario_id = dados.get("usuario_id")
-        if not isinstance(usuario_id, int):
-            return jsonify({"erro": "Token inválido."}), 401
+    return decorada
 
-        with Conexao.conectar() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    """
-                    SELECT id, nome, email, papel, ativo, solicitante_id
-                    FROM usuarios
-                    WHERE id = %s
-                    """,
-                    (usuario_id,)
-                )
-                usuario = cur.fetchone()
 
-        if usuario is None or not usuario[4]:
-            return jsonify({"erro": "Usuário inativo ou inexistente."}), 401
+def autenticacao_opcional(f):
+    """Identifica o usuário quando há token, sem exigir login.
 
-        g.usuario = {
-            "id": usuario[0],
-            "nome": usuario[1],
-            "email": usuario[2],
-            "papel": usuario[3],
-            "solicitante_id": usuario[5]
-        }
+    g.usuario fica None para visitantes. Um token enviado, mas inválido
+    ou expirado, é recusado para não mascarar uma sessão vencida.
+    """
+    @wraps(f)
+    def decorada(*args, **kwargs):
+        g.usuario = None
+
+        if request.headers.get("Authorization"):
+            usuario, erro = _usuario_do_token()
+
+            if erro:
+                return jsonify({"erro": erro}), 401
+
+            g.usuario = usuario
+
         return f(*args, **kwargs)
 
     return decorada

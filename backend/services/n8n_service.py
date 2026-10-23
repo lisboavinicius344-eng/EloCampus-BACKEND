@@ -11,6 +11,11 @@ def _notificar(webhook_env, evento, payload):
     webhook_url = os.getenv(webhook_env, "").strip()
 
     if not webhook_url:
+        logger.warning(
+            "Evento %s não enviado ao n8n: variável %s não configurada.",
+            evento,
+            webhook_env,
+        )
         return False
 
     secret = os.getenv("N8N_WEBHOOK_SECRET", "").strip()

@@ -71,13 +71,15 @@ class AuthService:
         try:
             with Conexao.conectar() as conn:
                 with conn.cursor() as cur:
+                    # O papel da conta vem do tipo cadastrado pela
+                    # equipe, nunca de um valor escolhido pelo cliente.
                     cur.execute(
                         """
-                        SELECT id
+                        SELECT tipo
                         FROM solicitantes
                         WHERE id = %s
                           AND ativo = TRUE
-                          AND tipo = 'aluno'
+                          AND tipo IN ('aluno', 'professor')
                         FOR UPDATE
                         """,
                         (solicitante_id,)
@@ -86,8 +88,11 @@ class AuthService:
 
                     if solicitante is None:
                         raise ValueError(
-                            "Aluno não encontrado ou cadastro inativo."
+                            "Aluno ou professor não encontrado "
+                            "ou cadastro inativo."
                         )
+
+                    papel = solicitante[0]
 
                     cur.execute(
                         """
@@ -107,13 +112,14 @@ class AuthService:
                         INSERT INTO usuarios
                             (nome, email, senha_hash, papel,
                              ativo, solicitante_id)
-                        VALUES (%s, %s, %s, 'aluno', TRUE, %s)
+                        VALUES (%s, %s, %s, %s, TRUE, %s)
                         RETURNING id, nome, email, papel, solicitante_id
                         """,
                         (
                             nome.strip(),
                             email.strip(),
                             senha_hash,
+                            papel,
                             solicitante_id
                         )
                     )

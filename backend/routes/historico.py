@@ -1,5 +1,6 @@
 from flask import Blueprint, jsonify, request
 
+from services.auth_token import requer_papeis
 from services.historico_service import HistoricoService
 
 
@@ -13,11 +14,13 @@ historico_service = HistoricoService()
 
 
 @historico_bp.route("/", methods=["GET"])
+@requer_papeis("admin", "operador")
 def listar():
     return jsonify(historico_service.listar()), 200
 
 
 @historico_bp.route("/<int:historico_id>", methods=["GET"])
+@requer_papeis("admin", "operador")
 def obter_por_id(historico_id):
     registro = historico_service.obter_por_id(historico_id)
 
@@ -28,6 +31,7 @@ def obter_por_id(historico_id):
 
 
 @historico_bp.route("/", methods=["POST"])
+@requer_papeis("admin", "operador")
 def cadastrar():
     dados = request.get_json(silent=True)
 

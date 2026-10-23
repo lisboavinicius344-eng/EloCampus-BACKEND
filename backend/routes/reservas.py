@@ -2,7 +2,11 @@
 from flask import Blueprint, jsonify, request, g
 
 from services.reserva_service import ReservaService
-from services.auth_token import requer_autenticacao, requer_papeis
+from services.auth_token import (
+    PAPEIS_USUARIO_FINAL,
+    requer_autenticacao,
+    requer_papeis,
+)
 
 
 reservas_bp = Blueprint(
@@ -19,7 +23,7 @@ reserva_service = ReservaService()
 def listar_reservas():
     usuario = g.usuario
 
-    if usuario["papel"] == "aluno":
+    if usuario["papel"] in PAPEIS_USUARIO_FINAL:
         solicitante_id = usuario["solicitante_id"]
 
         if solicitante_id is None:
@@ -47,7 +51,7 @@ def obter_reserva(reserva_id):
     usuario = g.usuario
 
     if (
-        usuario["papel"] == "aluno"
+        usuario["papel"] in PAPEIS_USUARIO_FINAL
         and reserva["solicitante_id"] != usuario["solicitante_id"]
     ):
         return jsonify({"erro": "Permissão insuficiente."}), 403
@@ -67,7 +71,7 @@ def cadastrar_reserva():
 
     usuario = g.usuario
 
-    if usuario["papel"] == "aluno":
+    if usuario["papel"] in PAPEIS_USUARIO_FINAL:
         solicitante_id = usuario["solicitante_id"]
 
         if solicitante_id is None:
@@ -109,7 +113,7 @@ def _alterar_status(reserva_id, operacao):
             )
 
         elif operacao == "cancelar":
-            if usuario["papel"] == "aluno":
+            if usuario["papel"] in PAPEIS_USUARIO_FINAL:
                 solicitante_id = usuario["solicitante_id"]
 
                 if solicitante_id is None:

@@ -2,7 +2,11 @@
 from flask import Blueprint, jsonify, request, g
 
 from services.emprestimo_service import EmprestimoService
-from services.auth_token import requer_autenticacao, requer_papeis
+from services.auth_token import (
+    PAPEIS_USUARIO_FINAL,
+    requer_autenticacao,
+    requer_papeis,
+)
 
 
 emprestimos_bp = Blueprint(
@@ -19,7 +23,7 @@ emprestimo_service = EmprestimoService()
 def listar_emprestimos():
     usuario = g.usuario
 
-    if usuario["papel"] == "aluno":
+    if usuario["papel"] in PAPEIS_USUARIO_FINAL:
         solicitante_id = usuario["solicitante_id"]
 
         if solicitante_id is None:
@@ -49,7 +53,7 @@ def obter_emprestimo(emprestimo_id):
     usuario = g.usuario
 
     if (
-        usuario["papel"] == "aluno"
+        usuario["papel"] in PAPEIS_USUARIO_FINAL
         and emprestimo["solicitante_id"] != usuario["solicitante_id"]
     ):
         return jsonify({
@@ -60,7 +64,7 @@ def obter_emprestimo(emprestimo_id):
 
 
 @emprestimos_bp.route("/", methods=["POST"])
-@requer_autenticacao
+@requer_papeis("admin", "operador")
 def cadastrar_emprestimo():
     dados = request.get_json(silent=True)
 
@@ -69,19 +73,9 @@ def cadastrar_emprestimo():
             "erro": "Envie os dados em formato JSON."
         }), 400
 
-    usuario = g.usuario
-
-    if usuario["papel"] == "aluno":
-        solicitante_id = usuario["solicitante_id"]
-
-        if solicitante_id is None:
-            return jsonify({
-                "erro": "Sua conta não está vinculada a um solicitante."
-            }), 403
-
-        # A identidade vem do token, nunca do corpo enviado pelo cliente.
-        dados["solicitante_id"] = solicitante_id
-        dados["usuario_responsavel_id"] = usuario["id"]
+    # O aluno faz a reserva; o empréstimo é registrado pela equipe.
+    # O responsável é identificado pelo token, nunca pelo corpo enviado.
+    dados["usuario_responsavel_id"] = g.usuario["id"]
 
     try:
         emprestimo = emprestimo_service.cadastrar(dados)

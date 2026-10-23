@@ -63,7 +63,7 @@ CREATE TABLE solicitantes (
 COMMENT ON TABLE  solicitantes IS
     'Pessoas que solicitam empréstimos e reservas de equipamentos.';
 COMMENT ON COLUMN solicitantes.tipo IS
-    'aluno | servidor | professor | tecnico | externo. Somente solicitantes do tipo aluno podem criar conta pelo autocadastro.';
+    'aluno | servidor | professor | tecnico | externo. Somente solicitantes dos tipos aluno e professor podem criar conta pelo autocadastro.';
 COMMENT ON COLUMN solicitantes.ativo IS
     'FALSE = desativado. Solicitantes inativos não podem fazer empréstimos nem reservas.';
 
@@ -71,9 +71,10 @@ COMMENT ON COLUMN solicitantes.ativo IS
 -- =====================================================================
 -- 2. USUÁRIOS
 --    Contas de acesso ao sistema.
---      admin    -> administração completa
---      operador -> operação do dia a dia (empréstimos, devoluções...)
---      aluno    -> conta vinculada a um solicitante do tipo aluno
+--      admin     -> administração completa
+--      operador  -> operação do dia a dia (empréstimos, devoluções...)
+--      aluno     -> conta vinculada a um solicitante do tipo aluno
+--      professor -> conta vinculada a um solicitante do tipo professor
 -- =====================================================================
 
 CREATE TABLE usuarios (
@@ -89,9 +90,9 @@ CREATE TABLE usuarios (
     CONSTRAINT usuarios_nome_nao_vazio
         CHECK (BTRIM(nome) <> ''),
     CONSTRAINT usuarios_papel_valido
-        CHECK (papel IN ('admin', 'operador', 'aluno')),
-    CONSTRAINT usuarios_aluno_tem_solicitante
-        CHECK (papel <> 'aluno' OR solicitante_id IS NOT NULL)
+        CHECK (papel IN ('admin', 'operador', 'aluno', 'professor')),
+    CONSTRAINT usuarios_usuario_final_tem_solicitante
+        CHECK (papel NOT IN ('aluno', 'professor') OR solicitante_id IS NOT NULL)
 );
 
 -- O login compara o e-mail sem diferenciar maiúsculas de minúsculas
@@ -109,9 +110,9 @@ COMMENT ON TABLE  usuarios IS
 COMMENT ON COLUMN usuarios.senha_hash IS
     'Hash gerado por werkzeug.security.generate_password_hash. Nunca armazene a senha em texto.';
 COMMENT ON COLUMN usuarios.papel IS
-    'admin | operador | aluno.';
+    'admin | operador | aluno | professor.';
 COMMENT ON COLUMN usuarios.solicitante_id IS
-    'Obrigatório para o papel aluno. Liga a conta ao cadastro de solicitante.';
+    'Obrigatório para os papéis aluno e professor. Liga a conta ao cadastro de solicitante.';
 
 
 -- =====================================================================
