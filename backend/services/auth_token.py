@@ -48,7 +48,8 @@ def _usuario_do_token():
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT id, nome, email, papel, ativo, solicitante_id
+                SELECT id, nome, email, papel, ativo, solicitante_id,
+                       deve_trocar_senha
                 FROM usuarios
                 WHERE id = %s
                 """,
@@ -64,11 +65,34 @@ def _usuario_do_token():
         "nome": usuario[1],
         "email": usuario[2],
         "papel": usuario[3],
-        "solicitante_id": usuario[5]
+        "solicitante_id": usuario[5],
+        "deve_trocar_senha": usuario[6]
     }, None
 
 
 def requer_autenticacao(f):
+    @wraps(f)
+    def decorada(*args, **kwargs):
+        usuario, erro = _usuario_do_token()
+
+        if erro:
+            return jsonify({"erro": erro}), 401
+
+        # Com senha provisória, a única ação liberada é criar a senha.
+        if usuario["deve_trocar_senha"]:
+            return jsonify({
+                "erro": "Crie sua senha antes de continuar.",
+                "codigo": "TROCA_DE_SENHA_OBRIGATORIA"
+            }), 403
+
+        g.usuario = usuario
+        return f(*args, **kwargs)
+
+    return decorada
+
+
+def requer_autenticacao_para_trocar_senha(f):
+    """Exige login, mas aceita quem ainda está com a senha provisória."""
     @wraps(f)
     def decorada(*args, **kwargs):
         usuario, erro = _usuario_do_token()
@@ -98,7 +122,9 @@ def autenticacao_opcional(f):
             if erro:
                 return jsonify({"erro": erro}), 401
 
-            g.usuario = usuario
+            # Senha provisória pendente: tratado como visitante.
+            if not usuario["deve_trocar_senha"]:
+                g.usuario = usuario
 
         return f(*args, **kwargs)
 

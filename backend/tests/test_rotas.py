@@ -9,11 +9,13 @@ from services.emprestimo_service import EmprestimoService
 from services.usuario_service import UsuarioService
 
 
+# (id, nome, email, papel, ativo, solicitante_id, deve_trocar_senha)
 USUARIOS = {
-    1: (1, "Admin", "admin@teste.local", "admin", True, None),
-    2: (2, "Operador", "operador@teste.local", "operador", True, None),
-    3: (3, "Aluno", "aluno@teste.local", "aluno", True, 30),
-    4: (4, "Professor", "prof@teste.local", "professor", True, 40),
+    1: (1, "Admin", "admin@teste.local", "admin", True, None, False),
+    2: (2, "Operador", "operador@teste.local", "operador", True, None, False),
+    3: (3, "Aluno", "aluno@teste.local", "aluno", True, 30, False),
+    4: (4, "Professor", "prof@teste.local", "professor", True, 40, False),
+    5: (5, "Novato", "novo@teste.local", "operador", True, None, True),
 }
 
 

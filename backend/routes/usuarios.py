@@ -39,13 +39,51 @@ def cadastrar_usuario():
         return jsonify({"erro": "Envie os dados em formato JSON."}), 400
 
     try:
-        usuario = usuario_service.cadastrar(dados)
-        return jsonify({
-            "mensagem": "Usuário cadastrado com sucesso.",
-            "usuario": usuario
-        }), 201
+        usuario, enviado, senha = usuario_service.cadastrar(dados)
     except ValueError as erro:
         return jsonify({"erro": str(erro)}), 400
+
+    return jsonify(
+        _resposta_senha_provisoria("Usuário cadastrado.", usuario, enviado, senha)
+    ), 201
+
+
+@usuarios_bp.route("/<int:usuario_id>/reenviar-senha", methods=["PATCH"])
+@requer_papeis("admin")
+def reenviar_senha(usuario_id):
+    resultado = usuario_service.reenviar_senha(usuario_id)
+
+    if resultado is None:
+        return jsonify({
+            "erro": "Usuário não encontrado ou desativado."
+        }), 404
+
+    usuario, enviado, senha = resultado
+
+    return jsonify(
+        _resposta_senha_provisoria(
+            "Nova senha provisória gerada.", usuario, enviado, senha
+        )
+    ), 200
+
+
+def _resposta_senha_provisoria(mensagem, usuario, enviado, senha):
+    resposta = {
+        "mensagem": mensagem + (
+            " A senha provisória foi enviada por e-mail."
+            if enviado
+            else " Não foi possível enviar o e-mail: repasse a senha "
+                 "provisória pessoalmente."
+        ),
+        "email_enviado": enviado,
+        "usuario": usuario,
+    }
+
+    # Só quando o e-mail falhou, para o admin não ficar sem saída.
+    if not enviado:
+        resposta["senha_provisoria"] = senha
+
+    return resposta
 
 
 @usuarios_bp.route("/<int:usuario_id>/desativar", methods=["PATCH"])

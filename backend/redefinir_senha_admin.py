@@ -21,7 +21,9 @@ with Conexao.conectar() as conn:
         cur.execute(
             """
             UPDATE usuarios
-            SET senha_hash = %s
+            SET senha_hash = %s,
+                deve_trocar_senha = FALSE,
+                senha_provisoria_expira_em = NULL
             WHERE LOWER(email) = LOWER(%s)
               AND papel = 'admin'
               AND ativo = TRUE

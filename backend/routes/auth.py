@@ -1,8 +1,10 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from services.auth_service import AuthService
-from services.auth_token import gerar_token
-from services.n8n_service import notificar_cadastro_aluno
+from services.auth_token import (
+    gerar_token,
+    requer_autenticacao_para_trocar_senha,
+)
 
 auth_bp = Blueprint(
     "auth",
@@ -22,14 +24,20 @@ def login():
 
     try:
         usuario = AuthService.login(dados)
-        return jsonify({
-    "mensagem": "Login realizado com sucesso.",
-    "token": gerar_token(usuario["id"]),
-    "usuario": usuario
-}), 200
-
     except ValueError as erro:
         return jsonify({"erro": str(erro)}), 401
+
+    mensagem = (
+        "Primeiro acesso: crie sua senha para continuar."
+        if usuario["deve_trocar_senha"]
+        else "Login realizado com sucesso."
+    )
+
+    return jsonify({
+        "mensagem": mensagem,
+        "token": gerar_token(usuario["id"]),
+        "usuario": usuario
+    }), 200
 
 
 @auth_bp.route("/cadastro-aluno", methods=["POST"])
@@ -42,12 +50,37 @@ def cadastrar_aluno():
         }), 400
 
     try:
-        usuario = AuthService.cadastrar_aluno(dados)
-        notificar_cadastro_aluno(usuario)
-        return jsonify({
-            "mensagem": "Conta de aluno criada com sucesso.",
-            "usuario": usuario
-        }), 201
-
+        usuario, email_enviado = AuthService.cadastrar_aluno(dados)
     except ValueError as erro:
         return jsonify({"erro": str(erro)}), 400
+
+    mensagem = (
+        "Conta criada. Enviamos uma senha provisória para o seu e-mail."
+        if email_enviado
+        else "Conta criada, mas não foi possível enviar o e-mail com a "
+             "senha provisória. Procure a administração."
+    )
+
+    return jsonify({
+        "mensagem": mensagem,
+        "email_enviado": email_enviado,
+        "usuario": usuario
+    }), 201
+
+
+@auth_bp.route("/trocar-senha", methods=["POST"])
+@requer_autenticacao_para_trocar_senha
+def trocar_senha():
+    dados = request.get_json(silent=True)
+
+    if not isinstance(dados, dict):
+        return jsonify({
+            "erro": "Envie os dados em formato JSON."
+        }), 400
+
+    try:
+        AuthService.trocar_senha(g.usuario["id"], dados)
+    except ValueError as erro:
+        return jsonify({"erro": str(erro)}), 400
+
+    return jsonify({"mensagem": "Senha alterada com sucesso."}), 200

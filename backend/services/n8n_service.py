@@ -46,18 +46,25 @@ def _notificar(webhook_env, evento, payload):
         return False
 
 
-def notificar_cadastro_aluno(usuario):
+def notificar_senha_provisoria(usuario, senha, expira_em, evento):
+    """Envia ao n8n a senha provisória de primeiro acesso.
+
+    Eventos: cadastro_aluno (autocadastro), cadastro_usuario (conta
+    criada pelo admin) e senha_provisoria (nova senha reenviada).
+    """
     return _notificar(
         "N8N_CADASTRO_WEBHOOK_URL",
-        "cadastro_aluno",
+        evento,
         {
             "usuario": {
                 "id": usuario["id"],
                 "nome": usuario["nome"],
                 "email": usuario["email"],
                 "papel": usuario["papel"],
-                "solicitante_id": usuario["solicitante_id"],
-            }
+                "solicitante_id": usuario.get("solicitante_id"),
+            },
+            "senha_provisoria": senha,
+            "senha_expira_em": expira_em.isoformat(),
         },
     )
 

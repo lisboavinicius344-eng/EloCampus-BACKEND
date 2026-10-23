@@ -86,6 +86,8 @@ CREATE TABLE usuarios (
     ativo           BOOLEAN      NOT NULL DEFAULT TRUE,
     criado_em       TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     solicitante_id  BIGINT REFERENCES solicitantes (id),
+    deve_trocar_senha           BOOLEAN NOT NULL DEFAULT FALSE,
+    senha_provisoria_expira_em  TIMESTAMPTZ,
 
     CONSTRAINT usuarios_nome_nao_vazio
         CHECK (BTRIM(nome) <> ''),
@@ -111,6 +113,10 @@ COMMENT ON COLUMN usuarios.senha_hash IS
     'Hash gerado por werkzeug.security.generate_password_hash. Nunca armazene a senha em texto.';
 COMMENT ON COLUMN usuarios.papel IS
     'admin | operador | aluno | professor.';
+COMMENT ON COLUMN usuarios.deve_trocar_senha IS
+    'TRUE enquanto a conta usa a senha provisória enviada por e-mail. O login funciona, mas a API só libera a troca de senha.';
+COMMENT ON COLUMN usuarios.senha_provisoria_expira_em IS
+    'Validade da senha provisória. Depois disso, o login é recusado até o admin reenviar uma nova.';
 COMMENT ON COLUMN usuarios.solicitante_id IS
     'Obrigatório para os papéis aluno e professor. Liga a conta ao cadastro de solicitante.';
 

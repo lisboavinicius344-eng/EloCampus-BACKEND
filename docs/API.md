@@ -73,7 +73,24 @@ Todos os erros vêm em JSON, sempre no campo **`erro`**:
 
 ---
 
-## 3. Login e sessão
+## 3. Login, primeiro acesso e sessão
+
+### Como funciona o primeiro acesso
+
+Ninguém escolhe senha ao criar a conta. O fluxo é:
+
+1. A conta é criada (autocadastro ou pelo admin).
+2. A pessoa recebe por **e-mail** uma **senha provisória**, válida por
+   **24 horas**.
+3. Ela entra com essa senha. O login responde
+   `"deve_trocar_senha": true`.
+4. O frontend leva para a tela **"Criar sua senha"**, que chama
+   `POST /auth/trocar-senha`.
+5. A partir daí, tudo funciona normalmente.
+
+Enquanto a senha não for trocada, **qualquer outra rota responde 403**
+com `"codigo": "TROCA_DE_SENHA_OBRIGATORIA"` — use esse código para
+redirecionar à tela de criação de senha.
 
 ### `POST /auth/login` — público
 
@@ -92,12 +109,20 @@ Todos os erros vêm em JSON, sempre no campo **`erro`**:
     "nome": "Ana Beatriz Lima",
     "email": "ana@escola.edu.br",
     "papel": "aluno",
-    "solicitante_id": 30
+    "solicitante_id": 30,
+    "deve_trocar_senha": false
   }
 }
 ```
 
-**401** — `{ "erro": "E-mail ou senha inválidos." }`
+Se `usuario.deve_trocar_senha` for `true`, a mensagem é
+"Primeiro acesso: crie sua senha para continuar." — **guarde o token**
+e vá para a tela de criação de senha.
+
+**401**
+
+- `{ "erro": "E-mail ou senha inválidos." }`
+- `{ "erro": "Sua senha provisória expirou. Procure a administração para receber uma nova." }`
 
 > ⚠️ O login responde **401** quando a senha está errada. Como o
 > `requisitar` atual redireciona para o login em qualquer 401, faça a
@@ -112,6 +137,22 @@ Todos os erros vêm em JSON, sempre no campo **`erro`**:
 - Contas desativadas não conseguem entrar, e tokens de contas
   desativadas param de funcionar imediatamente.
 
+### `POST /auth/trocar-senha` — logado (inclusive com senha provisória)
+
+Usada no primeiro acesso e também para trocar a senha depois.
+
+```json
+{ "senha_atual": "k7PqR2mXzA", "nova_senha": "minhaSenhaNova" }
+```
+
+**200** — `{ "mensagem": "Senha alterada com sucesso." }`
+
+O **mesmo token** passa a acessar todas as rotas — não é preciso
+entrar de novo.
+
+Erros (400): senha atual incorreta, nova senha com menos de 8
+caracteres, nova senha igual à atual.
+
 ### `POST /auth/cadastro-aluno` — público
 
 Autocadastro de **alunos e professores**. A pessoa precisa já estar
@@ -122,17 +163,28 @@ O papel da conta é definido pelo tipo desse cadastro.
 {
   "nome": "Ana Beatriz Lima",
   "email": "ana@escola.edu.br",
-  "senha": "minimo8caracteres",
   "solicitante_id": 30
 }
 ```
 
-**201** — `{ "mensagem": "Conta de aluno criada com sucesso.", "usuario": {...} }`
+Não há campo de senha: a senha provisória chega pelo e-mail.
 
-Erros (400): senha com menos de 8 caracteres, e-mail já usado,
-solicitante inexistente/inativo/de outro tipo, solicitante que já tem conta.
+**201**
 
-Ao concluir, o backend dispara o e-mail de boas-vindas pelo n8n.
+```json
+{
+  "mensagem": "Conta criada. Enviamos uma senha provisória para o seu e-mail.",
+  "email_enviado": true,
+  "usuario": { "id": 3, "nome": "Ana Beatriz Lima", "email": "ana@escola.edu.br", "papel": "aluno", "solicitante_id": 30 }
+}
+```
+
+Se `email_enviado` for `false`, a conta foi criada mas o e-mail falhou:
+mostre a `mensagem`, que orienta a procurar a administração (o admin
+pode reenviar a senha). A senha **nunca** aparece nesta resposta.
+
+Erros (400): e-mail inválido ou já usado, solicitante
+inexistente/inativo/de outro tipo, solicitante que já tem conta.
 
 ---
 
@@ -602,14 +654,38 @@ O backend registra sozinho os tipos `emprestimo` e `devolucao`.
 
 ## 13. Gestão da equipe (somente admin — tela a ser criada)
 
-Objeto: `{ "id", "nome", "email", "papel", "ativo", "solicitante_id", "criado_em" }`
+Objeto: `{ "id", "nome", "email", "papel", "ativo", "solicitante_id", "criado_em", "deve_trocar_senha" }`
+
+`deve_trocar_senha: true` indica quem ainda não fez o primeiro acesso.
 
 | Método e rota | Corpo / resposta |
 |---|---|
 | `GET /usuarios` | `{ "usuarios": [...] }` (todas as contas) |
 | `GET /usuarios/<id>` | `{ "usuario": {...} }` |
-| `POST /usuarios` | `{ "nome", "email", "senha", "papel": "admin" \| "operador" }` → **201** |
+| `POST /usuarios` | `{ "nome", "email", "papel": "admin" \| "operador" }` → **201** |
+| `PATCH /usuarios/<id>/reenviar-senha` | Gera e envia uma **nova senha provisória** (24 h) |
 | `PATCH /usuarios/<id>/desativar` | Não permite desativar a própria conta nem o último administrador |
+
+O admin **não define a senha**: a pessoa recebe a senha provisória por
+e-mail e cria a própria no primeiro acesso.
+
+Resposta de `POST /usuarios` e `reenviar-senha`:
+
+```json
+{
+  "mensagem": "Usuário cadastrado. A senha provisória foi enviada por e-mail.",
+  "email_enviado": true,
+  "usuario": { "...": "objeto usuário" }
+}
+```
+
+Se o e-mail falhar (`"email_enviado": false`), a resposta inclui
+`"senha_provisoria"` para o admin **repassar pessoalmente** — mostre-a
+uma única vez, com destaque.
+
+Use **reenviar-senha** quando a senha provisória expirar, o e-mail não
+chegar ou alguém esquecer a senha: a senha anterior deixa de valer e a
+pessoa precisará criar uma nova no próximo acesso.
 
 ---
 
@@ -629,6 +705,7 @@ Objeto: `{ "id", "nome", "email", "papel", "ativo", "solicitante_id", "criado_em
 | `removerEquipamento` | `DELETE /equipamentos/<id>` | ⚠️ **`PATCH /equipamentos/<id>/inativar`** |
 | `perfil` / `salvarPerfil` | `/perfil` | ❌ não existe — usar o `usuario` devolvido pelo login |
 | `autenticar` (auth.js) | contas fixas | ⚠️ **`POST /auth/login`** com `email` e `senha` |
+| — | — | 🆕 tela **"Criar sua senha"** → `POST /auth/trocar-senha` (seção 3) |
 
 **Nomes de campos que mudam** (demo → API):
 

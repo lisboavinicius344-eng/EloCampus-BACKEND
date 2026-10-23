@@ -1,7 +1,7 @@
 import psycopg
-from werkzeug.security import generate_password_hash
 
 from database.conexao import Conexao
+from services import senha_provisoria
 
 
 class UsuarioService:
@@ -14,7 +14,7 @@ class UsuarioService:
             with conexao.cursor() as cursor:
                 cursor.execute("""
                     SELECT id, nome, email, papel, ativo,
-                           solicitante_id, criado_em
+                           solicitante_id, criado_em, deve_trocar_senha
                     FROM usuarios
                     ORDER BY nome
                 """)
@@ -27,7 +27,7 @@ class UsuarioService:
             with conexao.cursor() as cursor:
                 cursor.execute("""
                     SELECT id, nome, email, papel, ativo,
-                           solicitante_id, criado_em
+                           solicitante_id, criado_em, deve_trocar_senha
                     FROM usuarios
                     WHERE id = %s
                 """, (usuario_id,))
@@ -36,9 +36,13 @@ class UsuarioService:
         return self._para_dict(registro) if registro else None
 
     def cadastrar(self, dados):
+        """Cria uma conta da equipe com senha provisória enviada por e-mail.
+
+        Retorna (usuario, email_enviado, senha). A senha só é devolvida
+        quando o e-mail falhou, para o admin repassá-la pessoalmente.
+        """
         nome = dados.get("nome")
         email = dados.get("email")
-        senha = dados.get("senha")
         papel = dados.get("papel", "operador")
 
         if not isinstance(nome, str) or not nome.strip():
@@ -47,31 +51,68 @@ class UsuarioService:
         if not isinstance(email, str) or "@" not in email:
             raise ValueError("Informe um e-mail válido.")
 
-        if not isinstance(senha, str) or len(senha) < 8:
-            raise ValueError("A senha deve ter pelo menos 8 caracteres.")
-
         if papel not in self.PAPEIS_DA_EQUIPE:
             raise ValueError("O papel deve ser admin ou operador.")
+
+        senha, senha_hash, expira_em = senha_provisoria.gerar()
 
         try:
             with Conexao.conectar() as conexao:
                 with conexao.cursor() as cursor:
                     cursor.execute("""
-                        INSERT INTO usuarios (nome, email, senha_hash, papel)
-                        VALUES (%s, %s, %s, %s)
+                        INSERT INTO usuarios (
+                            nome, email, senha_hash, papel,
+                            deve_trocar_senha, senha_provisoria_expira_em
+                        )
+                        VALUES (%s, %s, %s, %s, TRUE, %s)
                         RETURNING id
                     """, (
                         nome.strip(),
                         email.strip(),
-                        generate_password_hash(senha),
+                        senha_hash,
                         papel,
+                        expira_em,
                     ))
                     usuario_id = cursor.fetchone()[0]
 
         except psycopg.errors.UniqueViolation:
             raise ValueError("Já existe uma conta com esse e-mail.") from None
 
-        return self.obter_por_id(usuario_id)
+        usuario = self.obter_por_id(usuario_id)
+        enviado = senha_provisoria.enviar(
+            usuario, senha, expira_em, "cadastro_usuario"
+        )
+
+        return usuario, enviado, None if enviado else senha
+
+    def reenviar_senha(self, usuario_id):
+        """Gera e envia uma nova senha provisória.
+
+        A senha atual deixa de valer, e a pessoa precisará criar uma
+        nova no próximo acesso. Retorna None se o usuário não existir.
+        """
+        senha, senha_hash, expira_em = senha_provisoria.gerar()
+
+        with Conexao.conectar() as conexao:
+            with conexao.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE usuarios
+                    SET senha_hash = %s,
+                        deve_trocar_senha = TRUE,
+                        senha_provisoria_expira_em = %s
+                    WHERE id = %s AND ativo = TRUE
+                    RETURNING id
+                """, (senha_hash, expira_em, usuario_id))
+
+                if cursor.fetchone() is None:
+                    return None
+
+        usuario = self.obter_por_id(usuario_id)
+        enviado = senha_provisoria.enviar(
+            usuario, senha, expira_em, "senha_provisoria"
+        )
+
+        return usuario, enviado, None if enviado else senha
 
     def desativar(self, usuario_id, usuario_logado_id):
         if usuario_id == usuario_logado_id:
@@ -130,4 +171,5 @@ class UsuarioService:
             "criado_em": (
                 registro[6].isoformat() if registro[6] else None
             ),
+            "deve_trocar_senha": registro[7],
         }
