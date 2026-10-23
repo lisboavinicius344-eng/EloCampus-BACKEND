@@ -267,3 +267,98 @@ def test_elegibilidade_de_equipamento_restrito(tipo, permitido):
     else:
         with pytest.raises(ValueError, match="somente para professores"):
             verificar_elegibilidade(cursor, tipo, [7])
+
+
+RESERVA_APROVADA = {
+    "id": 8,
+    "solicitante_id": 30,
+    "data_fim": "2026-12-01T17:00:00+00:00",
+    "observacoes": "TCC",
+    "itens": [{"equipamento_id": 2}, {"equipamento_id": 5}],
+}
+
+
+def test_retirada_usa_os_dados_da_reserva(cliente, autenticado):
+    with (
+        patch(
+            "routes.reservas.reserva_service.obter_por_id",
+            return_value=RESERVA_APROVADA,
+        ),
+        patch(
+            "routes.reservas.emprestimo_service.cadastrar",
+            return_value={"id": 1},
+        ) as cadastrar,
+    ):
+        resposta = cliente.post(
+            "/api/reservas/8/retirar", headers=_cabecalho(2)
+        )
+
+    assert resposta.status_code == 201
+    dados = cadastrar.call_args.args[0]
+    assert cadastrar.call_args.kwargs["reserva_id"] == 8
+    assert dados["solicitante_id"] == 30
+    assert dados["equipamentos"] == [2, 5]
+    assert dados["data_prevista_devolucao"] == RESERVA_APROVADA["data_fim"]
+    assert dados["usuario_responsavel_id"] == 2
+
+
+def test_retirada_aceita_outra_data_de_devolucao(cliente, autenticado):
+    with (
+        patch(
+            "routes.reservas.reserva_service.obter_por_id",
+            return_value=RESERVA_APROVADA,
+        ),
+        patch(
+            "routes.reservas.emprestimo_service.cadastrar",
+            return_value={"id": 1},
+        ) as cadastrar,
+    ):
+        cliente.post(
+            "/api/reservas/8/retirar",
+            json={"data_prevista_devolucao": "2026-12-05T17:00:00+00:00"},
+            headers=_cabecalho(1),
+        )
+
+    assert (
+        cadastrar.call_args.args[0]["data_prevista_devolucao"]
+        == "2026-12-05T17:00:00+00:00"
+    )
+
+
+@pytest.mark.parametrize("usuario_id", [3, 4])
+def test_usuario_final_nao_registra_retirada(cliente, autenticado, usuario_id):
+    resposta = cliente.post(
+        "/api/reservas/8/retirar", headers=_cabecalho(usuario_id)
+    )
+
+    assert resposta.status_code == 403
+
+
+def test_retirada_de_reserva_inexistente(cliente, autenticado):
+    with patch(
+        "routes.reservas.reserva_service.obter_por_id",
+        return_value=None,
+    ):
+        resposta = cliente.post(
+            "/api/reservas/99/retirar", headers=_cabecalho(2)
+        )
+
+    assert resposta.status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("reserva", "itens_reservados", "mensagem"),
+    [
+        (None, [], "não encontrada"),
+        (("pendente", 30), [(2,)], "aprovada"),
+        (("aprovada", 99), [(2,)], "solicitante"),
+        (("aprovada", 30), [(2,), (7,)], "equipamentos"),
+    ],
+)
+def test_validacao_da_reserva_na_retirada(reserva, itens_reservados, mensagem):
+    cursor = MagicMock()
+    cursor.fetchone.return_value = reserva
+    cursor.fetchall.return_value = itens_reservados
+
+    with pytest.raises(ValueError, match=mensagem):
+        EmprestimoService._validar_reserva(cursor, 8, 30, [2])

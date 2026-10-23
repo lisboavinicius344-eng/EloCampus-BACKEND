@@ -100,7 +100,13 @@ class EmprestimoService:
 
         return emprestimo
 
-    def cadastrar(self, dados):
+    def cadastrar(self, dados, reserva_id=None):
+        """Registra a retirada de equipamentos.
+
+        Com reserva_id, a retirada atende a uma reserva aprovada: os
+        dados precisam corresponder a ela, e a reserva é concluída na
+        mesma transação.
+        """
         itens = dados.get("equipamentos")
 
         if not isinstance(itens, list) or not itens:
@@ -187,6 +193,11 @@ class EmprestimoService:
                             "Usuário responsável não encontrado ou inativo."
                         )
 
+                    if reserva_id is not None:
+                        self._validar_reserva(
+                            cursor, reserva_id, solicitante_id, itens
+                        )
+
                     cursor.execute("""
                         SELECT id, status, estado_conservacao
                         FROM equipamentos
@@ -214,6 +225,33 @@ class EmprestimoService:
                             )
 
                     verificar_elegibilidade(cursor, solicitante[0], itens)
+
+                    # Não empresta um equipamento que outra pessoa
+                    # reservou (reserva aprovada) dentro do período do
+                    # empréstimo. Reservas do próprio solicitante não
+                    # bloqueiam: ele está retirando o que reservou.
+                    cursor.execute("""
+                        SELECT DISTINCT ir.equipamento_id
+                        FROM itens_reserva ir
+                        JOIN reservas r ON r.id = ir.reserva_id
+                        WHERE ir.equipamento_id = ANY(%s)
+                          AND r.status = 'aprovada'
+                          AND r.solicitante_id <> %s
+                          AND r.data_inicio < %s
+                          AND r.data_fim > NOW()
+                        ORDER BY ir.equipamento_id
+                    """, (itens, solicitante_id, data_prevista))
+
+                    reservados = [
+                        registro[0] for registro in cursor.fetchall()
+                    ]
+
+                    if reservados:
+                        raise ValueError(
+                            "Equipamentos reservados por outra pessoa "
+                            f"nesse período: {reservados}. Ajuste a data "
+                            "de devolução ou escolha outro equipamento."
+                        )
 
                     cursor.execute("""
                         INSERT INTO emprestimos (
@@ -266,6 +304,13 @@ class EmprestimoService:
                             "emprestimo",
                             "Equipamento emprestado.",
                         ))
+
+                    if reserva_id is not None:
+                        cursor.execute("""
+                            UPDATE reservas
+                            SET status = 'concluida'
+                            WHERE id = %s
+                        """, (reserva_id,))
 
         except ValueError:
             raise
@@ -418,6 +463,45 @@ class EmprestimoService:
             )
 
         return emprestimo_atualizado
+
+    @staticmethod
+    def _validar_reserva(cursor, reserva_id, solicitante_id, itens):
+        cursor.execute("""
+            SELECT status, solicitante_id
+            FROM reservas
+            WHERE id = %s
+            FOR UPDATE
+        """, (reserva_id,))
+        reserva = cursor.fetchone()
+
+        if reserva is None:
+            raise ValueError("Reserva não encontrada.")
+
+        status, dono_id = reserva
+
+        if status != "aprovada":
+            raise ValueError(
+                "Só é possível registrar a retirada de uma reserva "
+                f"aprovada. Status atual: '{status}'."
+            )
+
+        if dono_id != solicitante_id:
+            raise ValueError(
+                "O solicitante não corresponde ao da reserva."
+            )
+
+        cursor.execute("""
+            SELECT equipamento_id
+            FROM itens_reserva
+            WHERE reserva_id = %s
+        """, (reserva_id,))
+
+        reservados = {registro[0] for registro in cursor.fetchall()}
+
+        if reservados != set(itens):
+            raise ValueError(
+                "Os equipamentos não correspondem aos da reserva."
+            )
 
     @staticmethod
     def _para_dict(r):

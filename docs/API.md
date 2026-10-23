@@ -354,7 +354,9 @@ registrada **por item**; quando o último item é devolvido, o empréstimo
 passa para `concluido`.
 
 > **Fluxo:** o aluno/professor **reserva** → a equipe **aprova** → na
-> retirada, a equipe **registra o empréstimo**.
+> retirada, a equipe usa **`POST /reservas/<id>/retirar`** (seção 10),
+> que cria o empréstimo a partir da reserva. O `POST /emprestimos` é
+> para retiradas **sem** reserva (atendimento no balcão).
 
 ### Objeto empréstimo
 
@@ -410,6 +412,9 @@ passa para `concluido`.
 - O responsável é **o usuário logado** (não é enviado).
 - `data_prevista_devolucao` precisa estar no futuro.
 - Todos os equipamentos precisam estar `disponivel` e não danificados.
+- A API recusa (400) equipamentos que **outra pessoa** tem reservados
+  (reserva aprovada) dentro do período do empréstimo. A mensagem informa
+  quais são; ajuste a data de devolução ou escolha outro equipamento.
 
 **Corpo da devolução:**
 
@@ -451,7 +456,7 @@ Devolvido `danificado`, o equipamento vai automaticamente para manutenção.
 ```
 
 `status`: `pendente` → `aprovada` | `rejeitada` | `cancelada`;
-`aprovada` → `cancelada`.
+`aprovada` → `cancelada` | `concluida` (quando a retirada é registrada).
 
 ### Rotas
 
@@ -463,9 +468,45 @@ Devolvido `danificado`, o equipamento vai automaticamente para manutenção.
 | `PATCH /reservas/<id>/aprovar` | admin, operador | Só reservas `pendente` |
 | `PATCH /reservas/<id>/rejeitar` | admin, operador | Só reservas `pendente` |
 | `PATCH /reservas/<id>/cancelar` | logado | `pendente` ou `aprovada`; aluno/professor só as próprias |
+| `POST /reservas/<id>/retirar` | admin, operador | Registra a retirada: cria o empréstimo e conclui a reserva |
 
 Os `PATCH` não precisam de corpo e respondem
 `{ "mensagem", "reserva" }`.
+
+### Registrar a retirada de uma reserva
+
+`POST /reservas/<id>/retirar` — usado quando a pessoa vem buscar o que
+reservou. Cria o empréstimo **com os mesmos equipamentos e o mesmo
+solicitante** da reserva e muda a reserva para `concluida`, tudo de uma
+vez (se algo falhar, nada é gravado).
+
+O corpo é **opcional**:
+
+```json
+{
+  "data_prevista_devolucao": "2026-11-05T18:00:00-03:00",
+  "observacoes": "Retirado pela própria aluna"
+}
+```
+
+- Sem `data_prevista_devolucao`, a devolução fica para o **fim do
+  período reservado** (`data_fim`). Se esse horário já passou, a API pede
+  uma data futura (400).
+- Sem `observacoes`, usa as observações da reserva.
+- O responsável é o usuário logado.
+
+**201**
+
+```json
+{ "mensagem": "Retirada registrada com sucesso.", "emprestimo": { "...": "objeto empréstimo da seção 9" } }
+```
+
+Erros (400): reserva que não está `aprovada` (inclusive já retirada),
+equipamento que deixou de estar disponível ou foi danificado. 404 se a
+reserva não existir.
+
+Sugestão de tela: na lista de reservas aprovadas, um botão
+**"Registrar retirada"** para a equipe.
 
 **Corpo do `POST /reservas` (aluno/professor):**
 
@@ -483,9 +524,15 @@ Os `PATCH` não precisam de corpo e respondem
   (e opcionalmente `"usuario_responsavel_id"`).
 - As datas **precisam ter fuso horário** e `data_fim` deve ser depois de
   `data_inicio`.
-- A API recusa (400) equipamentos indisponíveis, períodos que conflitam
-  com outras reservas pendentes/aprovadas ou com empréstimos em
-  andamento, e equipamentos restritos a funcionários (para alunos).
+- Equipamentos **emprestados** podem ser reservados, desde que a
+  devolução prevista seja **antes** do início da reserva.
+- A API recusa (400):
+  - equipamentos em **manutenção** ou **baixados** (sem previsão de retorno);
+  - períodos que conflitam com outras reservas pendentes/aprovadas;
+  - períodos que conflitam com empréstimos em andamento — e, se o
+    empréstimo estiver **atrasado**, qualquer período, até a devolução;
+  - equipamentos restritos a funcionários (para alunos).
+- As mesmas verificações são refeitas na **aprovação**.
 
 ---
 

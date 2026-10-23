@@ -1,6 +1,7 @@
 
 from flask import Blueprint, jsonify, request, g
 
+from services.emprestimo_service import EmprestimoService
 from services.reserva_service import ReservaService
 from services.auth_token import (
     PAPEIS_USUARIO_FINAL,
@@ -16,6 +17,7 @@ reservas_bp = Blueprint(
 )
 
 reserva_service = ReservaService()
+emprestimo_service = EmprestimoService()
 
 
 @reservas_bp.route("/", methods=["GET"])
@@ -170,3 +172,50 @@ def rejeitar_reserva(reserva_id):
 @requer_autenticacao
 def cancelar_reserva(reserva_id):
     return _alterar_status(reserva_id, "cancelar")
+
+
+@reservas_bp.route("/<int:reserva_id>/retirar", methods=["POST"])
+@requer_papeis("admin", "operador")
+def registrar_retirada(reserva_id):
+    """Registra o empréstimo de uma reserva aprovada e a conclui."""
+    dados = request.get_json(silent=True)
+
+    if dados is None:
+        dados = {}
+
+    if not isinstance(dados, dict):
+        return jsonify({
+            "erro": "Envie os dados em formato JSON."
+        }), 400
+
+    reserva = reserva_service.obter_por_id(reserva_id)
+
+    if reserva is None:
+        return jsonify({"erro": "Reserva não encontrada."}), 404
+
+    try:
+        emprestimo = emprestimo_service.cadastrar(
+            {
+                "solicitante_id": reserva["solicitante_id"],
+                "equipamentos": [
+                    item["equipamento_id"] for item in reserva["itens"]
+                ],
+                # Por padrão, a devolução fica para o fim da reserva.
+                "data_prevista_devolucao": dados.get(
+                    "data_prevista_devolucao", reserva["data_fim"]
+                ),
+                "observacoes": dados.get(
+                    "observacoes", reserva["observacoes"]
+                ),
+                "usuario_responsavel_id": g.usuario["id"],
+            },
+            reserva_id=reserva_id,
+        )
+
+        return jsonify({
+            "mensagem": "Retirada registrada com sucesso.",
+            "emprestimo": emprestimo
+        }), 201
+
+    except ValueError as erro:
+        return jsonify({"erro": str(erro)}), 400

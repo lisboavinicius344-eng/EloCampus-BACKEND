@@ -10,6 +10,9 @@ from services.n8n_service import notificar_reserva
 
 logger = logging.getLogger(__name__)
 
+# Status que permitem reservar o equipamento para um período futuro.
+STATUS_RESERVAVEIS = ("disponivel", "emprestado")
+
 
 class ReservaService:
 
@@ -244,10 +247,13 @@ class ReservaService:
                         "Um ou mais equipamentos não foram encontrados."
                     )
 
+                # Emprestado pode ser reservado: o conflito de datas com
+                # o empréstimo é verificado abaixo. Manutenção e baixa
+                # não têm previsão de retorno.
                 indisponiveis = [
                     equipamento_id
                     for equipamento_id, status in equipamentos
-                    if status != "disponivel"
+                    if status not in STATUS_RESERVAVEIS
                 ]
 
                 if indisponiveis:
@@ -287,7 +293,11 @@ class ReservaService:
                       AND ie.data_devolucao IS NULL
                       AND em.status = 'em_andamento'
                       AND em.data_emprestimo < %s
-                      AND em.data_prevista_devolucao > %s
+                      -- Atrasado: sem previsão de volta, bloqueia qualquer período.
+                      AND (
+                          em.data_prevista_devolucao > %s
+                          OR em.data_prevista_devolucao < NOW()
+                      )
                 """, (ids, fim, inicio))
 
                 conflitos_emprestimos = [
@@ -394,8 +404,8 @@ class ReservaService:
                         FROM itens_reserva ir
                         JOIN equipamentos e ON e.id = ir.equipamento_id
                         WHERE ir.reserva_id = %s
-                          AND e.status <> 'disponivel'
-                    """, (reserva_id,))
+                          AND e.status <> ALL(%s)
+                    """, (reserva_id, list(STATUS_RESERVAVEIS)))
 
                     indisponiveis = [
                         registro[0] for registro in cursor.fetchall()
@@ -442,7 +452,11 @@ class ReservaService:
                           AND ie.data_devolucao IS NULL
                           AND em.status = 'em_andamento'
                           AND em.data_emprestimo < %s
-                          AND em.data_prevista_devolucao > %s
+                          -- Atrasado: sem previsão de volta, bloqueia qualquer período.
+                          AND (
+                              em.data_prevista_devolucao > %s
+                              OR em.data_prevista_devolucao < NOW()
+                          )
                     """, (reserva_id, fim, inicio))
 
                     conflitos_emprestimos = [
