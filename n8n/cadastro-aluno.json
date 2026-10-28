@@ -1,5 +1,5 @@
 {
-  "name": "EloCampus - Cadastro e senha provisória",
+  "name": "EloCampus - Cadastro, senha provisória e recuperação",
   "nodes": [
     {
       "parameters": {
@@ -41,6 +41,12 @@
               "type": "string"
             },
             {
+              "id": "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d",
+              "name": "primeiro_nome",
+              "value": "={{ String($json.body.usuario.nome || '').trim().split(/\\s+/)[0] }}",
+              "type": "string"
+            },
+            {
               "id": "e4a3c9d5-4f6b-4c8d-9e0f-2a3b4c5d6e7f",
               "name": "email",
               "value": "={{ $json.body.usuario.email }}",
@@ -57,6 +63,42 @@
               "name": "senha_expira_em",
               "value": "={{ DateTime.fromISO($json.body.senha_expira_em).setZone('America/Sao_Paulo').toFormat(\"dd/MM/yyyy 'às' HH:mm\") }}",
               "type": "string"
+            },
+            {
+              "id": "1b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e",
+              "name": "enviado_em",
+              "value": "={{ $now.setZone('America/Sao_Paulo').toFormat(\"dd/MM/yyyy 'às' HH:mm\") }}",
+              "type": "string"
+            },
+            {
+              "id": "2c3d4e5f-6a7b-4c8d-8e9f-1a2b3c4d5e6f",
+              "name": "assunto",
+              "value": "={{ ({cadastro_aluno: \"Bem-vindo(a) ao ELO Campus - sua senha de primeiro acesso\", cadastro_usuario: \"Sua conta da equipe ELO Campus foi criada\", senha_provisoria: \"ELO Campus - sua nova senha provisória\", recuperacao_senha: \"ELO Campus - recuperação de senha\"})[$json.body.evento] || \"ELO Campus - senha provisória\" }}",
+              "type": "string"
+            },
+            {
+              "id": "3d4e5f6a-7b8c-4d9e-9f0a-2b3c4d5e6f7a",
+              "name": "titulo",
+              "value": "={{ ({cadastro_aluno: \"Sua conta foi criada\", cadastro_usuario: \"Bem-vindo(a) à equipe\", senha_provisoria: \"Nova senha provisória\", recuperacao_senha: \"Recuperação de senha\"})[$json.body.evento] || \"Senha provisória\" }}",
+              "type": "string"
+            },
+            {
+              "id": "4e5f6a7b-8c9d-4e0f-8a1b-3c4d5e6f7a8b",
+              "name": "introducao",
+              "value": "={{ ({cadastro_aluno: \"Seu cadastro no ELO Campus foi concluído. Agora você pode consultar equipamentos, fazer reservas e acompanhar seus empréstimos.\", cadastro_usuario: \"A administração criou para você uma conta da equipe no ELO Campus, para gerenciar o acervo, os empréstimos e as reservas.\", senha_provisoria: \"A administração gerou uma nova senha provisória para a sua conta no ELO Campus. A senha anterior deixou de valer.\", recuperacao_senha: \"Recebemos um pedido para recuperar o acesso à sua conta no ELO Campus.\"})[$json.body.evento] || \"Segue a sua senha provisória do ELO Campus.\" }}",
+              "type": "string"
+            },
+            {
+              "id": "5f6a7b8c-9d0e-4f1a-9b2c-4d5e6f7a8b9c",
+              "name": "aviso",
+              "value": "={{ ({recuperacao_senha: \"Não foi você que pediu? Ignore este e-mail. Sua senha atual continua funcionando, e esta senha provisória expira sozinha.\"})[$json.body.evento] || \"Se você não esperava este e-mail, avise a administração do ELO Campus.\" }}",
+              "type": "string"
+            },
+            {
+              "id": "6a7b8c9d-0e1f-4a2b-8c3d-5e6f7a8b9c0d",
+              "name": "link_acesso",
+              "value": "https://elocampus.com.br/",
+              "type": "string"
             }
           ]
         },
@@ -69,7 +111,7 @@
         -32
       ],
       "id": "65360dd8-bdda-4212-98db-c6b26f2b5a65",
-      "name": "Dados do aluno"
+      "name": "Dados do e-mail"
     },
     {
       "parameters": {
@@ -88,10 +130,10 @@
     },
     {
       "parameters": {
-        "sendTo": "={{ $('Dados do aluno').item.json.email }}",
-        "subject": "={{ $('Dados do aluno').item.json.evento === 'senha_provisoria' ? 'ELO Campus - sua nova senha provisória' : 'Bem-vindo(a) ao ELO Campus - senha de primeiro acesso' }}",
+        "sendTo": "={{ $('Dados do e-mail').item.json.email }}",
+        "subject": "={{ $('Dados do e-mail').item.json.assunto }}",
         "emailType": "html",
-        "message": "=<p>Olá, {{ $('Dados do aluno').item.json.nome }}!</p>\n{{ $('Dados do aluno').item.json.evento === 'senha_provisoria' ? '<p>Uma nova senha provisória foi gerada para a sua conta no <strong>ELO Campus</strong>.</p>' : '<p>Sua conta no <strong>ELO Campus</strong> foi criada.</p>' }}\n<p>Use os dados abaixo para o seu <strong>primeiro acesso</strong>:</p>\n<p>E-mail: <strong>{{ $('Dados do aluno').item.json.email }}</strong><br>\nSenha provisória: <strong style=\"font-family: monospace; font-size: 18px; letter-spacing: 2px;\">{{ $('Dados do aluno').item.json.senha_provisoria }}</strong></p>\n<p>Ao entrar, você deverá criar a sua própria senha. A senha provisória vale até <strong>{{ $('Dados do aluno').item.json.senha_expira_em }}</strong>; depois disso, peça uma nova à administração.</p>\n<p>Se você não esperava este e-mail, ignore-o e avise a administração.</p>\n<p>Equipe ELO Campus</p>",
+        "message": "=<div style=\"margin:0;padding:24px 12px;background:#f3f1fb;font-family:Arial,Helvetica,sans-serif;color:#1f1b2e\">\n  <div style=\"max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e4def7\">\n    <div style=\"background:linear-gradient(135deg,#7c3aed,#c026d3);padding:22px 28px;color:#ffffff\">\n      <div style=\"font-size:13px;letter-spacing:2px;text-transform:uppercase;opacity:.85\">ELO Campus</div>\n      <div style=\"font-size:22px;font-weight:bold;margin-top:6px\">{{ $('Dados do e-mail').item.json.titulo }}</div>\n    </div>\n    <div style=\"padding:26px 28px;font-size:15px;line-height:1.55\">\n      <p style=\"margin:0 0 14px\">Olá, <strong>{{ $('Dados do e-mail').item.json.primeiro_nome }}</strong>!</p>\n      <p style=\"margin:0 0 14px\">{{ $('Dados do e-mail').item.json.introducao }}</p>\n      {{ $('Dados do e-mail').item.json.evento === 'recuperacao_senha' ? '<p style=\"margin:0 0 14px;color:#5b5570;font-size:13px\">Pedido recebido em ' + $('Dados do e-mail').item.json.enviado_em + ' (horário de Brasília).</p>' : '' }}\n      <p style=\"margin:0 0 8px\">Use estes dados para entrar:</p>\n      <div style=\"background:#f7f5fd;border:1px solid #e4def7;border-radius:12px;padding:16px 18px;margin:0 0 16px\">\n        <div style=\"font-size:13px;color:#5b5570\">E-mail</div>\n        <div style=\"font-weight:bold;margin-bottom:10px\">{{ $('Dados do e-mail').item.json.email }}</div>\n        <div style=\"font-size:13px;color:#5b5570\">Senha provisória</div>\n        <div style=\"font-family:'Courier New',monospace;font-size:24px;font-weight:bold;letter-spacing:3px;color:#6d28d9\">{{ $('Dados do e-mail').item.json.senha_provisoria }}</div>\n      </div>\n      <p style=\"margin:0 0 14px\">Ela vale até <strong>{{ $('Dados do e-mail').item.json.senha_expira_em }}</strong>. Ao entrar, o sistema vai pedir que você crie a sua própria senha.</p>\n      <p style=\"text-align:center;margin:22px 0\">\n        <a href=\"{{ $('Dados do e-mail').item.json.link_acesso }}\" style=\"background:#7c3aed;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:999px;font-weight:bold;display:inline-block\">Acessar o ELO Campus</a>\n      </p>\n      <p style=\"margin:0;padding:12px 14px;background:#fff7ed;border-radius:10px;font-size:13px;color:#7c2d12\">{{ $('Dados do e-mail').item.json.aviso }}</p>\n    </div>\n    <div style=\"padding:14px 28px;background:#faf9fe;font-size:12px;color:#8a84a0;border-top:1px solid #eee9fb\">\n      Mensagem automática do ELO Campus. Não responda este e-mail.\n    </div>\n  </div>\n</div>",
         "options": {
           "appendAttribution": false
         }
@@ -113,18 +155,7 @@
       "main": [
         [
           {
-            "node": "Dados do aluno",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Dados do aluno": {
-      "main": [
-        [
-          {
-            "node": "Responder ao backend",
+            "node": "Dados do e-mail",
             "type": "main",
             "index": 0
           }
@@ -136,6 +167,17 @@
         [
           {
             "node": "Enviar senha provisória",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dados do e-mail": {
+      "main": [
+        [
+          {
+            "node": "Responder ao backend",
             "type": "main",
             "index": 0
           }

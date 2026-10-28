@@ -99,7 +99,9 @@ class UsuarioService:
                     UPDATE usuarios
                     SET senha_hash = %s,
                         deve_trocar_senha = TRUE,
-                        senha_provisoria_expira_em = %s
+                        senha_provisoria_expira_em = %s,
+                        reset_senha_hash = NULL,
+                        reset_senha_expira_em = NULL
                     WHERE id = %s AND ativo = TRUE
                     RETURNING id
                 """, (senha_hash, expira_em, usuario_id))

@@ -29,8 +29,7 @@ class EmprestimoService:
                     ORDER BY e.id DESC
                 """)
                 registros = cursor.fetchall()
-
-        return [self._para_dict(r) for r in registros]
+                return self._com_itens(cursor, registros)
 
     def listar_por_solicitante(self, solicitante_id):
         with Conexao.conectar() as conexao:
@@ -48,8 +47,7 @@ class EmprestimoService:
                     ORDER BY e.id DESC
                 """, (solicitante_id,))
                 registros = cursor.fetchall()
-
-        return [self._para_dict(r) for r in registros]
+                return self._com_itens(cursor, registros)
 
     def obter_por_id(self, emprestimo_id):
         with Conexao.conectar() as conexao:
@@ -70,35 +68,7 @@ class EmprestimoService:
                 if registro is None:
                     return None
 
-                emprestimo = self._para_dict(registro)
-
-                cursor.execute("""
-                    SELECT
-                        ie.equipamento_id, eq.nome,
-                        ie.estado_na_retirada, ie.data_devolucao,
-                        ie.estado_na_devolucao, ie.observacoes
-                    FROM itens_emprestimo ie
-                    JOIN equipamentos eq ON eq.id = ie.equipamento_id
-                    WHERE ie.emprestimo_id = %s
-                    ORDER BY ie.id
-                """, (emprestimo_id,))
-                itens = cursor.fetchall()
-
-        emprestimo["itens"] = [
-            {
-                "equipamento_id": item[0],
-                "equipamento": item[1],
-                "estado_na_retirada": item[2],
-                "data_devolucao": (
-                    item[3].isoformat() if item[3] else None
-                ),
-                "estado_na_devolucao": item[4],
-                "observacoes": item[5],
-            }
-            for item in itens
-        ]
-
-        return emprestimo
+                return self._com_itens(cursor, [registro])[0]
 
     def cadastrar(self, dados, reserva_id=None):
         """Registra a retirada de equipamentos.
@@ -502,6 +472,45 @@ class EmprestimoService:
             raise ValueError(
                 "Os equipamentos não correspondem aos da reserva."
             )
+
+    @staticmethod
+    def _com_itens(cursor, registros):
+        """Converte os empréstimos e anexa os itens de todos numa consulta só."""
+        emprestimos = [EmprestimoService._para_dict(r) for r in registros]
+
+        if not emprestimos:
+            return emprestimos
+
+        cursor.execute("""
+            SELECT
+                ie.emprestimo_id, ie.equipamento_id, eq.nome,
+                eq.numero_patrimonio, ie.estado_na_retirada,
+                ie.data_devolucao, ie.estado_na_devolucao, ie.observacoes
+            FROM itens_emprestimo ie
+            JOIN equipamentos eq ON eq.id = ie.equipamento_id
+            WHERE ie.emprestimo_id = ANY(%s)
+            ORDER BY ie.id
+        """, ([e["id"] for e in emprestimos],))
+
+        itens = {e["id"]: [] for e in emprestimos}
+
+        for item in cursor.fetchall():
+            itens[item[0]].append({
+                "equipamento_id": item[1],
+                "equipamento": item[2],
+                "numero_patrimonio": item[3],
+                "estado_na_retirada": item[4],
+                "data_devolucao": (
+                    item[5].isoformat() if item[5] else None
+                ),
+                "estado_na_devolucao": item[6],
+                "observacoes": item[7],
+            })
+
+        for emprestimo in emprestimos:
+            emprestimo["itens"] = itens[emprestimo["id"]]
+
+        return emprestimos
 
     @staticmethod
     def _para_dict(r):

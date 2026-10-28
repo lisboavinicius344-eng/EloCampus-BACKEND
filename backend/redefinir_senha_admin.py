@@ -23,7 +23,9 @@ with Conexao.conectar() as conn:
             UPDATE usuarios
             SET senha_hash = %s,
                 deve_trocar_senha = FALSE,
-                senha_provisoria_expira_em = NULL
+                senha_provisoria_expira_em = NULL,
+                reset_senha_hash = NULL,
+                reset_senha_expira_em = NULL
             WHERE LOWER(email) = LOWER(%s)
               AND papel = 'admin'
               AND ativo = TRUE

@@ -28,7 +28,7 @@ def login():
         return jsonify({"erro": str(erro)}), 401
 
     mensagem = (
-        "Primeiro acesso: crie sua senha para continuar."
+        "Crie sua nova senha para continuar."
         if usuario["deve_trocar_senha"]
         else "Login realizado com sucesso."
     )
@@ -66,6 +66,31 @@ def cadastrar_aluno():
         "email_enviado": email_enviado,
         "usuario": usuario
     }), 201
+
+
+@auth_bp.route("/esqueci-senha", methods=["POST"])
+def esqueci_senha():
+    dados = request.get_json(silent=True)
+
+    if not isinstance(dados, dict):
+        return jsonify({
+            "erro": "Envie os dados em formato JSON."
+        }), 400
+
+    try:
+        AuthService.esqueci_senha(dados)
+    except ValueError as erro:
+        return jsonify({"erro": str(erro)}), 400
+
+    # A mesma resposta para e-mails cadastrados ou não: assim a tela não
+    # serve para descobrir quem tem conta no sistema.
+    return jsonify({
+        "mensagem": (
+            "Se o e-mail estiver cadastrado, você receberá em instantes "
+            "uma senha provisória. Ela vale por pouco tempo; sua senha "
+            "atual continua funcionando até você usá-la."
+        )
+    }), 200
 
 
 @auth_bp.route("/trocar-senha", methods=["POST"])

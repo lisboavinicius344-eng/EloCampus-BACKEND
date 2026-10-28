@@ -89,7 +89,7 @@ def test_login_avisa_primeiro_acesso(cliente):
     corpo = resposta.get_json()
     assert resposta.status_code == 200
     assert corpo["usuario"]["deve_trocar_senha"] is True
-    assert "crie sua senha" in corpo["mensagem"]
+    assert "nova senha" in corpo["mensagem"]
 
 
 def test_autocadastro_nunca_devolve_a_senha(cliente):
@@ -152,3 +152,47 @@ def test_falha_no_envio_nao_interrompe(monkeypatch):
         assert senha_provisoria.enviar(
             {"id": 1}, "x", datetime.now(timezone.utc), "cadastro_aluno"
         ) is False
+
+
+def test_esqueci_senha_responde_igual_exista_ou_nao(cliente):
+    respostas = []
+
+    for enviado in (True, False):
+        with patch(
+            "routes.auth.AuthService.esqueci_senha", return_value=enviado
+        ):
+            respostas.append(cliente.post(
+                "/api/auth/esqueci-senha", json={"email": "a@b.c"}
+            ))
+
+    assert [r.status_code for r in respostas] == [200, 200]
+    assert respostas[0].get_json() == respostas[1].get_json()
+    assert list(respostas[0].get_json()) == ["mensagem"]
+
+
+@pytest.mark.parametrize("corpo", [{}, {"email": "sem-arroba"}, {"email": 5}])
+def test_esqueci_senha_valida_o_email(cliente, corpo):
+    resposta = cliente.post("/api/auth/esqueci-senha", json=corpo)
+
+    assert resposta.status_code == 400
+    assert "e-mail" in resposta.get_json()["erro"]
+
+
+def test_esqueci_senha_e_publico(cliente):
+    with patch("routes.auth.AuthService.esqueci_senha", return_value=False):
+        resposta = cliente.post(
+            "/api/auth/esqueci-senha", json={"email": "a@b.c"}
+        )
+
+    assert resposta.status_code == 200
+
+
+def test_validade_da_recuperacao(monkeypatch):
+    monkeypatch.setenv("SENHA_RECUPERACAO_MINUTOS", "30")
+    assert senha_provisoria.validade_recuperacao_em_minutos() == 30
+
+    monkeypatch.setenv("SENHA_RECUPERACAO_MINUTOS", "1")
+    assert senha_provisoria.validade_recuperacao_em_minutos() == 5
+
+    monkeypatch.setenv("SENHA_RECUPERACAO_MINUTOS", "abc")
+    assert senha_provisoria.validade_recuperacao_em_minutos() == 60

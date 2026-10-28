@@ -50,7 +50,8 @@ def notificar_senha_provisoria(usuario, senha, expira_em, evento):
     """Envia ao n8n a senha provisória de primeiro acesso.
 
     Eventos: cadastro_aluno (autocadastro), cadastro_usuario (conta
-    criada pelo admin) e senha_provisoria (nova senha reenviada).
+    criada pelo admin), senha_provisoria (nova senha reenviada pelo
+    admin) e recuperacao_senha (pedida em "Esqueci minha senha").
     """
     return _notificar(
         "N8N_CADASTRO_WEBHOOK_URL",

@@ -24,11 +24,24 @@ def validade_em_horas():
     return max(horas, 1)
 
 
-def gerar():
-    """Retorna (senha, senha_hash, expira_em) de uma senha provisória."""
+def validade_recuperacao_em_minutos():
+    """Validade da senha enviada por "Esqueci minha senha" (mais curta)."""
+    try:
+        minutos = int(os.getenv("SENHA_RECUPERACAO_MINUTOS", "60"))
+    except ValueError:
+        minutos = 60
+
+    return max(minutos, 5)
+
+
+def gerar(validade=None):
+    """Retorna (senha, senha_hash, expira_em) de uma senha provisória.
+
+    validade: timedelta; sem ela, vale SENHA_PROVISORIA_HORAS.
+    """
     senha = "".join(secrets.choice(ALFABETO) for _ in range(TAMANHO))
-    expira_em = datetime.now(timezone.utc) + timedelta(
-        hours=validade_em_horas()
+    expira_em = datetime.now(timezone.utc) + (
+        validade or timedelta(hours=validade_em_horas())
     )
 
     return senha, generate_password_hash(senha), expira_em

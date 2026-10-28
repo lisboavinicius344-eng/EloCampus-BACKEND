@@ -163,3 +163,40 @@ def test_atualizar_bloqueia_mudanca_de_conservacao_em_emprestado():
         "UPDATE equipamentos" in chamada.args[0]
         for chamada in cursor.execute.call_args_list
     )
+
+
+def test_categoria_pode_vir_pelo_nome():
+    resultado = EquipamentoService._validar_dados({
+        "nome": "Projetor",
+        "categoria": "  Projetores   multimídia ",
+    })
+
+    assert resultado["categoria_id"] is None
+    assert resultado["categoria_nome"] == "Projetores multimídia"
+
+
+def test_categoria_id_tem_prioridade_sobre_o_nome():
+    resultado = EquipamentoService._validar_dados({
+        "nome": "Projetor",
+        "categoria_id": "3",
+        "categoria": "Outra",
+    })
+
+    assert resultado["categoria_id"] == 3
+    assert resultado["categoria_nome"] is None
+
+
+@pytest.mark.parametrize("dados", [{}, {"categoria": "   "}, {"categoria": 5}])
+def test_categoria_obrigatoria(dados):
+    with pytest.raises(ValueError, match="categoria"):
+        EquipamentoService._validar_dados({"nome": "Projetor", **dados})
+
+
+def test_resolver_categoria_desativada_e_recusada():
+    cursor = MagicMock()
+    cursor.fetchone.return_value = (4, "Projetores", False)
+
+    with pytest.raises(ValueError, match="desativada"):
+        EquipamentoService._resolver_categoria(
+            cursor, {"categoria_id": None, "categoria_nome": "projetores"}
+        )

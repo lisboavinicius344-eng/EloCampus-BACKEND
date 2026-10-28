@@ -88,6 +88,9 @@ CREATE TABLE usuarios (
     solicitante_id  BIGINT REFERENCES solicitantes (id),
     deve_trocar_senha           BOOLEAN NOT NULL DEFAULT FALSE,
     senha_provisoria_expira_em  TIMESTAMPTZ,
+    reset_senha_hash            VARCHAR(255),
+    reset_senha_expira_em       TIMESTAMPTZ,
+    reset_senha_solicitado_em   TIMESTAMPTZ,
 
     CONSTRAINT usuarios_nome_nao_vazio
         CHECK (BTRIM(nome) <> ''),
@@ -117,6 +120,12 @@ COMMENT ON COLUMN usuarios.deve_trocar_senha IS
     'TRUE enquanto a conta usa a senha provisória enviada por e-mail. O login funciona, mas a API só libera a troca de senha.';
 COMMENT ON COLUMN usuarios.senha_provisoria_expira_em IS
     'Validade da senha provisória. Depois disso, o login é recusado até o admin reenviar uma nova.';
+COMMENT ON COLUMN usuarios.reset_senha_hash IS
+    'Senha enviada por "Esqueci minha senha". Convive com a senha atual: só substitui senha_hash quando é usada no login.';
+COMMENT ON COLUMN usuarios.reset_senha_expira_em IS
+    'Validade da senha de recuperação (SENHA_RECUPERACAO_MINUTOS, padrão 60).';
+COMMENT ON COLUMN usuarios.reset_senha_solicitado_em IS
+    'Último pedido de recuperação. Pedidos repetidos em menos de 2 minutos são ignorados.';
 COMMENT ON COLUMN usuarios.solicitante_id IS
     'Obrigatório para os papéis aluno e professor. Liga a conta ao cadastro de solicitante.';
 

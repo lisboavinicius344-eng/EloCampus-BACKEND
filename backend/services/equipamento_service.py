@@ -88,19 +88,9 @@ class EquipamentoService:
         try:
             with Conexao.conectar() as conexao:
                 with conexao.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        SELECT id
-                        FROM categorias
-                        WHERE id = %s AND ativo = TRUE
-                        """,
-                        (equipamento["categoria_id"],)
+                    equipamento["categoria_id"] = self._resolver_categoria(
+                        cursor, equipamento
                     )
-
-                    if cursor.fetchone() is None:
-                        raise ValueError(
-                            "Categoria não encontrada ou inativa."
-                        )
 
                     cursor.execute("""
                         INSERT INTO equipamentos (
@@ -175,19 +165,9 @@ class EquipamentoService:
                                 "a conservação durante a devolução."
                             )
 
-                    cursor.execute(
-                        """
-                        SELECT id
-                        FROM categorias
-                        WHERE id = %s AND ativo = TRUE
-                        """,
-                        (equipamento["categoria_id"],)
+                    equipamento["categoria_id"] = self._resolver_categoria(
+                        cursor, equipamento
                     )
-
-                    if cursor.fetchone() is None:
-                        raise ValueError(
-                            "Categoria não encontrada ou inativa."
-                        )
 
                     # O status operacional não é recebido livremente
                     # do cliente. A conservação danificada exige
@@ -282,22 +262,91 @@ class EquipamentoService:
         return equipamento_baixado
 
     @staticmethod
+    def _resolver_categoria(cursor, equipamento):
+        """Devolve o ID da categoria, criando-a quando veio só o nome."""
+        if equipamento["categoria_id"] is not None:
+            cursor.execute(
+                """
+                SELECT id
+                FROM categorias
+                WHERE id = %s AND ativo = TRUE
+                """,
+                (equipamento["categoria_id"],)
+            )
+
+            if cursor.fetchone() is None:
+                raise ValueError(
+                    "Categoria não encontrada ou inativa."
+                )
+
+            return equipamento["categoria_id"]
+
+        nome = equipamento["categoria_nome"]
+
+        cursor.execute(
+            """
+            INSERT INTO categorias (nome)
+            VALUES (%s)
+            ON CONFLICT ((LOWER(nome))) DO NOTHING
+            """,
+            (nome,)
+        )
+        cursor.execute(
+            """
+            SELECT id, nome, ativo
+            FROM categorias
+            WHERE LOWER(nome) = LOWER(%s)
+            """,
+            (nome,)
+        )
+        categoria = cursor.fetchone()
+
+        if not categoria[2]:
+            raise ValueError(
+                f"A categoria \"{categoria[1]}\" está desativada. "
+                "Reative-a ou escolha outra."
+            )
+
+        return categoria[0]
+
+    @staticmethod
     def _validar_dados(dados):
         nome = dados.get("nome")
 
         if not isinstance(nome, str) or not nome.strip():
             raise ValueError("O nome do equipamento é obrigatório.")
 
-        try:
-            categoria_id = int(dados.get("categoria_id"))
+        # A categoria pode vir pelo ID ou pelo nome. Pelo nome, ela é
+        # criada se ainda não existir (cadastro direto pelo formulário).
+        categoria_nome = None
 
-            if categoria_id <= 0:
-                raise ValueError
+        if dados.get("categoria_id") not in (None, ""):
+            try:
+                categoria_id = int(dados.get("categoria_id"))
 
-        except (TypeError, ValueError):
-            raise ValueError(
-                "Informe um categoria_id válido."
-            ) from None
+                if categoria_id <= 0:
+                    raise ValueError
+
+            except (TypeError, ValueError):
+                raise ValueError(
+                    "Informe um categoria_id válido."
+                ) from None
+
+        else:
+            categoria_id = None
+            categoria_nome = dados.get("categoria")
+
+            if not isinstance(categoria_nome, str) or not categoria_nome.strip():
+                raise ValueError(
+                    "Informe a categoria do equipamento."
+                )
+
+            categoria_nome = " ".join(categoria_nome.split())
+
+            if len(categoria_nome) > 80:
+                raise ValueError(
+                    "O nome da categoria deve ter no máximo 80 caracteres."
+                )
 
         estado = dados.get("estado_conservacao", "bom")
 
@@ -344,7 +393,8 @@ class EquipamentoService:
         return {
             "nome": equipamento.nome,
             "numero_patrimonio": patrimonio,
-            "categoria_id": equipamento.categoria_id,
+            "categoria_id": categoria_id,
+            "categoria_nome": categoria_nome,
             "setor": equipamento.setor,
             "localizacao": equipamento.localizacao,
             "estado_conservacao": equipamento.estado_conservacao,

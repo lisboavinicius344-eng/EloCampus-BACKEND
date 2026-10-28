@@ -116,13 +116,13 @@ redirecionar à tela de criação de senha.
 ```
 
 Se `usuario.deve_trocar_senha` for `true`, a mensagem é
-"Primeiro acesso: crie sua senha para continuar." — **guarde o token**
+"Crie sua nova senha para continuar." — **guarde o token**
 e vá para a tela de criação de senha.
 
 **401**
 
 - `{ "erro": "E-mail ou senha inválidos." }`
-- `{ "erro": "Sua senha provisória expirou. Procure a administração para receber uma nova." }`
+- `{ "erro": "Sua senha provisória expirou. Use \"Esqueci minha senha\" para receber uma nova." }`
 
 > ⚠️ O login responde **401** quando a senha está errada. Como o
 > `requisitar` atual redireciona para o login em qualquer 401, faça a
@@ -136,6 +136,37 @@ e vá para a tela de criação de senha.
   precisa entrar de novo.
 - Contas desativadas não conseguem entrar, e tokens de contas
   desativadas param de funcionar imediatamente.
+
+### `POST /auth/esqueci-senha` — público
+
+Botão **"Esqueci minha senha"** (`recuperar-senha.html`).
+
+```json
+{ "email": "ana@escola.edu.br" }
+```
+
+**200**, sempre com a mesma resposta, exista o e-mail ou não (assim a
+tela não revela quem tem conta):
+
+```json
+{ "mensagem": "Se o e-mail estiver cadastrado, você receberá em instantes uma senha provisória. Ela vale por pouco tempo; sua senha atual continua funcionando até você usá-la." }
+```
+
+**400** só quando o e-mail é inválido: `{ "erro": "Informe um e-mail válido." }`.
+
+Como funciona:
+
+1. Se o e-mail for de uma conta **ativa**, o backend gera uma senha
+   provisória e a envia pelo n8n (evento `recuperacao_senha`).
+2. Ela vale **60 minutos** (variável `SENHA_RECUPERACAO_MINUTOS`).
+3. **A senha atual continua valendo.** Um pedido feito por outra pessoa
+   não tira o acesso de ninguém.
+4. Se a pessoa entrar com a **senha atual**, o pedido é cancelado.
+5. Se entrar com a **senha provisória**, ela vira a senha da conta e o
+   login responde `deve_trocar_senha: true`: o mesmo fluxo do primeiro
+   acesso (tela "Criar sua senha").
+6. Pedidos repetidos para a mesma conta em menos de **2 minutos** são
+   ignorados (sem novo e-mail), com a mesma resposta 200.
 
 ### `POST /auth/trocar-senha` — logado (inclusive com senha provisória)
 
@@ -339,7 +370,13 @@ a tela funciona sem alterações.
 }
 ```
 
-- Obrigatórios: `nome` e `categoria_id` (a categoria deve estar ativa).
+- Obrigatórios: `nome` e a categoria, de um destes dois jeitos:
+  - `categoria_id`: uma categoria já cadastrada e ativa;
+  - `categoria`: o **nome** da categoria. Se ainda não existir, ela é
+    criada na hora (sem diferenciar maiúsculas nem espaços extras). Assim
+    o formulário de equipamento funciona mesmo com o banco vazio.
+    Categoria desativada é recusada (400).
+  - Se vierem os dois, vale o `categoria_id`.
 - O `PUT` substitui todos os campos — envie o objeto completo. A única
   exceção é `elegibilidade`: se não for enviada, o valor atual é mantido.
 - **O `status` não é enviado pelo frontend**: o backend calcula
@@ -427,6 +464,7 @@ passa para `concluido`.
     {
       "equipamento_id": 3,
       "equipamento": "Notebook Dell Latitude",
+      "numero_patrimonio": "INF-0031",
       "estado_na_retirada": "bom",
       "data_devolucao": null,
       "estado_na_devolucao": null,
@@ -437,8 +475,9 @@ passa para `concluido`.
 ```
 
 - `status`: `em_andamento`, `concluido`, `cancelado`.
-- `itens` vem apenas em `GET /emprestimos/<id>` e nas respostas de
-  cadastro/devolução (a listagem não traz os itens).
+- `itens` vem em todas as respostas, inclusive na listagem
+  `GET /emprestimos`. `numero_patrimonio` é `null` quando o equipamento
+  não tem patrimônio.
 - Atraso: `status = "em_andamento"` e `data_prevista_devolucao` no passado.
 
 ### Rotas
