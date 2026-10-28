@@ -377,6 +377,26 @@ a tela funciona sem alterações.
     o formulário de equipamento funciona mesmo com o banco vazio.
     Categoria desativada é recusada (400).
   - Se vierem os dois, vale o `categoria_id`.
+- **Foto (`imagem`)**, opcional, no mesmo corpo do `POST`/`PUT`:
+  - uma data URL (`data:image/jpeg;base64,...`, como devolve o
+    `FileReader.readAsDataURL`) grava ou troca a foto;
+  - `null` remove a foto;
+  - ausente (ou `""`) mantém a foto atual. **Na edição, só envie
+    `imagem` se a pessoa escolheu outra foto ou clicou em remover.**
+  - Formatos: JPG, PNG, WebP ou GIF (o tipo é conferido pelo conteúdo;
+    SVG é recusado). Máximo de **3 MB**; reduza a foto no navegador
+    antes de enviar. Corpo acima de 5 MB responde 413.
+- A resposta traz `imagem_url` (ou `null`), **relativa à base da API**:
+  `"/equipamentos/7/imagem?v=1793214215"`. No front:
+  `img.src = API_BASE_URL + equipamento.imagem_url`.
+
+### `GET /equipamentos/<id>/imagem` — público
+
+Devolve a foto (o arquivo da imagem, não JSON), para usar direto em
+`<img src>`; a tag `<img>` não envia o token, por isso a rota é pública,
+como a consulta por QR. 404 se o equipamento não tiver foto. O `?v=` da
+`imagem_url` muda a cada troca de foto, então o navegador pode guardar
+a imagem em cache sem mostrar a antiga.
 - O `PUT` substitui todos os campos — envie o objeto completo. A única
   exceção é `elegibilidade`: se não for enviada, o valor atual é mantido.
 - **O `status` não é enviado pelo frontend**: o backend calcula

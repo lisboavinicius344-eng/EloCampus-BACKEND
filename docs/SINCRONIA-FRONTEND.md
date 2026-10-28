@@ -131,8 +131,7 @@ vazio, todo cadastro de equipamento falha.
   - acrescentar o campo **Quem pode usar** → `elegibilidade`:
     `todos` (padrão) ou `somente_funcionarios` (alunos não conseguem
     reservar nem receber emprestado);
-  - a **foto** do equipamento não é guardada pela API; hoje ela se perde
-    ao recarregar. Esconder o campo ou avisar.
+  - **foto**: enviar no campo `imagem` do `salvarEquipamento` (ver 2.8).
 - Na lista de equipamentos, o "Retirar de uso" deve chamar
   `ELO.removerEquipamento(id)` → `PATCH /equipamentos/<id>/inativar`. A
   mensagem "salvo localmente… não foi enviada a um servidor" deve sair no
@@ -183,6 +182,43 @@ pedir a rota ao backend.
   modo demonstração. Servir esse arquivo com `Cache-Control: no-cache`
   (ou carregá-lo com `?v=<versão>`).
 
+### 2.8 Foto do equipamento
+
+A API guarda a foto. Três ajustes no front:
+
+1. **Enviar** no `salvarEquipamento` (`api.js`), só quando a foto mudou:
+
+   ```js
+   if (dados.imagemAlterada) corpo.imagem = dados.imagem || null; // null remove
+   ```
+
+   No `equipamento-form.js`, marcar `imagemAlterada = true` quando a
+   pessoa escolhe um arquivo ou clica em "Remover foto", e passar
+   `imagemAlterada` junto com `imagem` nos dados do formulário. Sem isso,
+   editar um equipamento apagaria a foto.
+
+2. **Reduzir antes de enviar** (limite de 3 MB; foto de celular costuma
+   passar disso). No lugar do `readAsDataURL`:
+
+   ```js
+   async function reduzirImagem(arquivo, lado = 1280, qualidade = 0.85) {
+     const bitmap = await createImageBitmap(arquivo);
+     const escala = Math.min(1, lado / Math.max(bitmap.width, bitmap.height));
+     const canvas = document.createElement("canvas");
+     canvas.width = Math.round(bitmap.width * escala);
+     canvas.height = Math.round(bitmap.height * escala);
+     canvas.getContext("2d").drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+     return canvas.toDataURL("image/jpeg", qualidade);
+   }
+   // foto.addEventListener("change", async () => { imagem = await reduzirImagem(foto.files[0]); imagemAlterada = true; ... });
+   ```
+
+3. **Mostrar**: equipamentos (lista, detalhe, formulário) e a consulta
+   por QR trazem `imagem_url`. Usar
+   `API_BASE_URL + equipamento.imagem_url` no `<img src>`; quando for
+   `null`, manter a silhueta atual. No `normalizarEquipamento`:
+   `imagem: e.imagem_url ? API_BASE_URL + e.imagem_url : ""`.
+
 ---
 
 ## 3. Mapa completo: rota → tela
@@ -203,6 +239,7 @@ Todas as rotas começam com `/api`. "Equipe" = admin e operador.
 | `POST /equipamentos` | equipe | Cadastrar equipamento | `salvarEquipamento` ⚠️ 2.3 |
 | `PUT /equipamentos/<id>` | equipe | Editar equipamento | `salvarEquipamento` ⚠️ 2.3 |
 | `PATCH /equipamentos/<id>/inativar` | equipe | Equipamentos → Retirar de uso | `removerEquipamento` ❌ não usado |
+| `GET /equipamentos/<id>/imagem` | público | `<img src>` da foto | via `imagem_url` ❌ 2.8 |
 | `GET /categorias` | logado | Formulário de equipamento | `categorias` ✅ |
 | `POST /categorias` | equipe | Categorias | ❌ criar |
 | `PUT /categorias/<id>` | equipe | Categorias | ❌ criar |

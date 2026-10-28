@@ -80,7 +80,9 @@ class PainelService:
                         e.localizacao,
                         e.estado_conservacao,
                         e.status,
-                        {SITUACAO_SQL} AS situacao
+                        {SITUACAO_SQL} AS situacao,
+                        e.imagem_tipo,
+                        e.imagem_atualizada_em
                     FROM equipamentos e
                     JOIN categorias c ON c.id = e.categoria_id
                     WHERE e.qr_code = %(termo)s
@@ -140,6 +142,12 @@ class PainelService:
                 "estado_conservacao": registro[6],
                 "status": registro[7],
                 "situacao": registro[8],
+                "imagem_url": (
+                    f"/equipamentos/{registro[0]}/imagem"
+                    f"?v={int(registro[10].timestamp())}"
+                    if registro[9]
+                    else None
+                ),
             },
             "emprestimo": emprestimo,
         }

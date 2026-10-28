@@ -44,6 +44,9 @@ app = Flask(__name__)
 # que o navegador não segue em requisições com CORS.
 app.url_map.strict_slashes = False
 
+# Limite do corpo das requisições: cobre uma imagem de 3 MB em base64.
+app.config["MAX_CONTENT_LENGTH"] = 5 * 1024 * 1024
+
 app.register_blueprint(equipamentos_bp)
 app.register_blueprint(categorias_bp)
 app.register_blueprint(solicitantes_bp)
@@ -79,6 +82,8 @@ def erro_http(erro):
     mensagens = {
         404: "Rota não encontrada.",
         405: "Método não permitido para esta rota.",
+        413: "Os dados enviados são grandes demais. "
+             "Reduza a imagem para no máximo 3 MB.",
     }
 
     return jsonify({

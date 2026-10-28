@@ -4,6 +4,7 @@ import psycopg
 
 from database.conexao import Conexao
 from models.equipamento import Equipamento
+from services import imagem_equipamento
 from services.painel_service import SITUACAO_SQL
 from services.n8n_service import notificar_equipamento
 
@@ -46,7 +47,9 @@ class EquipamentoService:
                         e.observacoes,
                         e.criado_em,
                         e.elegibilidade,
-                        {SITUACAO_SQL} AS situacao
+                        {SITUACAO_SQL} AS situacao,
+                        e.imagem_tipo,
+                        e.imagem_atualizada_em
                     FROM equipamentos e
                     JOIN categorias c ON c.id = e.categoria_id
                     ORDER BY e.id
@@ -73,7 +76,9 @@ class EquipamentoService:
                         e.observacoes,
                         e.criado_em,
                         e.elegibilidade,
-                        {SITUACAO_SQL} AS situacao
+                        {SITUACAO_SQL} AS situacao,
+                        e.imagem_tipo,
+                        e.imagem_atualizada_em
                     FROM equipamentos e
                     JOIN categorias c ON c.id = e.categoria_id
                     WHERE e.id = %s
@@ -84,6 +89,7 @@ class EquipamentoService:
 
     def cadastrar(self, dados):
         equipamento = self._validar_dados(dados)
+        _, imagem, imagem_tipo = imagem_equipamento.ler(dados)
 
         try:
             with Conexao.conectar() as conexao:
@@ -103,9 +109,13 @@ class EquipamentoService:
                             status,
                             qr_code,
                             observacoes,
-                            elegibilidade
+                            elegibilidade,
+                            imagem,
+                            imagem_tipo,
+                            imagem_atualizada_em
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                %s, %s, CASE WHEN %s THEN NOW() END)
                         RETURNING id
                     """, (
                         equipamento["nome"],
@@ -117,7 +127,10 @@ class EquipamentoService:
                         equipamento["status"],
                         equipamento["qr_code"],
                         equipamento["observacoes"],
-                        equipamento.get("elegibilidade") or "todos"
+                        equipamento.get("elegibilidade") or "todos",
+                        imagem,
+                        imagem_tipo,
+                        imagem is not None
                     ))
 
                     equipamento_id = cursor.fetchone()[0]
@@ -137,6 +150,7 @@ class EquipamentoService:
 
     def atualizar(self, equipamento_id, dados):
         equipamento = self._validar_dados(dados)
+        acao_imagem, imagem, imagem_tipo = imagem_equipamento.ler(dados)
 
         try:
             with Conexao.conectar() as conexao:
@@ -211,6 +225,22 @@ class EquipamentoService:
                         equipamento_id
                     ))
 
+                    if acao_imagem != imagem_equipamento.MANTER:
+                        cursor.execute("""
+                            UPDATE equipamentos
+                            SET imagem = %s,
+                                imagem_tipo = %s,
+                                imagem_atualizada_em = CASE
+                                    WHEN %s THEN NOW()
+                                END
+                            WHERE id = %s
+                        """, (
+                            imagem,
+                            imagem_tipo,
+                            imagem is not None,
+                            equipamento_id
+                        ))
+
         except psycopg.errors.UniqueViolation:
             raise ValueError(
                 "Já existe um equipamento com esse número de patrimônio."
@@ -260,6 +290,22 @@ class EquipamentoService:
         )
 
         return equipamento_baixado
+
+    def obter_imagem(self, equipamento_id):
+        """Retorna (conteudo, tipo) da imagem, ou None se não houver."""
+        with Conexao.conectar() as conexao:
+            with conexao.cursor() as cursor:
+                cursor.execute("""
+                    SELECT imagem, imagem_tipo
+                    FROM equipamentos
+                    WHERE id = %s AND imagem IS NOT NULL
+                """, (equipamento_id,))
+                registro = cursor.fetchone()
+
+        if registro is None:
+            return None
+
+        return bytes(registro[0]), registro[1]
 
     @staticmethod
     def _resolver_categoria(cursor, equipamento):
@@ -425,5 +471,14 @@ class EquipamentoService:
                 else None
             ),
             "elegibilidade": registro[12],
-            "situacao": registro[13]
+            "situacao": registro[13],
+            # Endereço relativo à base da API (ELO_API_BASE_URL). O ?v=
+            # muda a cada troca de imagem, para o navegador não usar a
+            # versão antiga guardada em cache.
+            "imagem_url": (
+                f"/equipamentos/{registro[0]}/imagem"
+                f"?v={int(registro[15].timestamp())}"
+                if registro[14]
+                else None
+            )
         }

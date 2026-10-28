@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 from services.equipamento_service import EquipamentoService
 from services.auth_token import requer_autenticacao, requer_papeis
 
@@ -50,6 +50,25 @@ def obter_equipamento(equipamento_id):
         }), 404
 
     return jsonify({"equipamento": equipamento}), 200
+
+
+@equipamentos_bp.route("/<int:equipamento_id>/imagem", methods=["GET"])
+def obter_imagem_equipamento(equipamento_id):
+    # Pública, como a consulta por QR Code: a tag <img> do navegador não
+    # envia o token de login.
+    imagem = equipamento_service.obter_imagem(equipamento_id)
+
+    if imagem is None:
+        return jsonify({
+            "erro": "Equipamento sem imagem."
+        }), 404
+
+    conteudo, tipo = imagem
+    resposta = Response(conteudo, mimetype=tipo)
+    resposta.headers["Cache-Control"] = "public, max-age=604800"
+    resposta.headers["X-Content-Type-Options"] = "nosniff"
+    resposta.headers["Content-Disposition"] = "inline"
+    return resposta
 
 
 @equipamentos_bp.route("/<int:equipamento_id>", methods=["PUT"])

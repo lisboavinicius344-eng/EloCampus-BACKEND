@@ -177,6 +177,9 @@ CREATE TABLE equipamentos (
     observacoes         TEXT,
     criado_em           TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
     elegibilidade       VARCHAR(40)  NOT NULL DEFAULT 'todos',
+    imagem              BYTEA,
+    imagem_tipo         VARCHAR(20),
+    imagem_atualizada_em TIMESTAMPTZ,
 
     CONSTRAINT equipamentos_nome_nao_vazio
         CHECK (BTRIM(nome) <> ''),
@@ -187,7 +190,13 @@ CREATE TABLE equipamentos (
     CONSTRAINT equipamentos_status_valido
         CHECK (status IN ('disponivel', 'emprestado', 'manutencao', 'baixado')),
     CONSTRAINT equipamentos_elegibilidade_valida
-        CHECK (elegibilidade IN ('todos', 'somente_funcionarios'))
+        CHECK (elegibilidade IN ('todos', 'somente_funcionarios')),
+    CONSTRAINT equipamentos_imagem_completa
+        CHECK ((imagem IS NULL) = (imagem_tipo IS NULL)),
+    CONSTRAINT equipamentos_imagem_tipo_valido
+        CHECK (imagem_tipo IN ('image/png', 'image/jpeg', 'image/webp', 'image/gif')),
+    CONSTRAINT equipamentos_imagem_tamanho
+        CHECK (octet_length(imagem) <= 3145728)
 );
 
 CREATE INDEX equipamentos_categoria_idx ON equipamentos (categoria_id);
@@ -200,7 +209,11 @@ COMMENT ON COLUMN equipamentos.numero_patrimonio IS
 COMMENT ON COLUMN equipamentos.status IS
     'disponivel | emprestado | manutencao | baixado. Controlado pelo backend, não pelo cliente.';
 COMMENT ON COLUMN equipamentos.elegibilidade IS
-    'todos | somente_funcionarios. Reservado para regra de elegibilidade (ainda não aplicada pelo backend).';
+    'todos | somente_funcionarios. Alunos não reservam nem recebem emprestado equipamento somente_funcionarios.';
+COMMENT ON COLUMN equipamentos.imagem IS
+    'Foto do equipamento (até 3 MB). Servida publicamente em GET /api/equipamentos/<id>/imagem.';
+COMMENT ON COLUMN equipamentos.imagem_atualizada_em IS
+    'Muda a cada troca de imagem; entra na URL (?v=) para o navegador não usar a versão antiga em cache.';
 
 
 -- =====================================================================
