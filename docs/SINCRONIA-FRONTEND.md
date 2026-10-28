@@ -197,8 +197,10 @@ A API guarda a foto. Três ajustes no front:
    `imagemAlterada` junto com `imagem` nos dados do formulário. Sem isso,
    editar um equipamento apagaria a foto.
 
-2. **Reduzir antes de enviar** (limite de 3 MB; foto de celular costuma
-   passar disso). No lugar do `readAsDataURL`:
+2. **Reduzir antes de enviar (opcional).** O backend aceita a foto
+   original de até 10 MB e comprime para no máximo 200 KB. Reduzir no
+   navegador só deixa o envio mais rápido no celular. No lugar do
+   `readAsDataURL`:
 
    ```js
    async function reduzirImagem(arquivo, lado = 1280, qualidade = 0.85) {

@@ -384,8 +384,11 @@ a tela funciona sem alterações.
   - ausente (ou `""`) mantém a foto atual. **Na edição, só envie
     `imagem` se a pessoa escolheu outra foto ou clicou em remover.**
   - Formatos: JPG, PNG, WebP ou GIF (o tipo é conferido pelo conteúdo;
-    SVG é recusado). Máximo de **3 MB**; reduza a foto no navegador
-    antes de enviar. Corpo acima de 5 MB responde 413.
+    SVG é recusado). Pode enviar a foto **original, de até 10 MB**:
+    o backend comprime para **no máximo 200 KB** (até 1280 px no maior
+    lado, JPEG; aplica a rotação do celular; fundo transparente vira
+    branco). Fotos que já têm até 200 KB são guardadas como vieram.
+    Corpo acima de 15 MB responde 413.
 - A resposta traz `imagem_url` (ou `null`), **relativa à base da API**:
   `"/equipamentos/7/imagem?v=1793214215"`. No front:
   `img.src = API_BASE_URL + equipamento.imagem_url`.

@@ -196,7 +196,7 @@ CREATE TABLE equipamentos (
     CONSTRAINT equipamentos_imagem_tipo_valido
         CHECK (imagem_tipo IN ('image/png', 'image/jpeg', 'image/webp', 'image/gif')),
     CONSTRAINT equipamentos_imagem_tamanho
-        CHECK (octet_length(imagem) <= 3145728)
+        CHECK (octet_length(imagem) <= 204800)
 );
 
 CREATE INDEX equipamentos_categoria_idx ON equipamentos (categoria_id);
@@ -211,7 +211,7 @@ COMMENT ON COLUMN equipamentos.status IS
 COMMENT ON COLUMN equipamentos.elegibilidade IS
     'todos | somente_funcionarios. Alunos não reservam nem recebem emprestado equipamento somente_funcionarios.';
 COMMENT ON COLUMN equipamentos.imagem IS
-    'Foto do equipamento (até 3 MB). Servida publicamente em GET /api/equipamentos/<id>/imagem.';
+    'Foto do equipamento, comprimida pelo backend para no máximo 200 KB. Servida publicamente em GET /api/equipamentos/<id>/imagem.';
 COMMENT ON COLUMN equipamentos.imagem_atualizada_em IS
     'Muda a cada troca de imagem; entra na URL (?v=) para o navegador não usar a versão antiga em cache.';
 
