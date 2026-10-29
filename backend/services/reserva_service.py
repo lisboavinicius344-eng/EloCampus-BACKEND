@@ -4,6 +4,7 @@ from datetime import datetime
 
 from database.conexao import Conexao
 from models.reserva import Reserva
+from services import identificadores, regras
 from services.elegibilidade import verificar_elegibilidade
 from services.n8n_service import notificar_reserva
 
@@ -38,6 +39,8 @@ class ReservaService:
     def listar(self):
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
+                regras.expirar_reservas(cursor)
+
                 cursor.execute("""
                     SELECT r.id, r.solicitante_id, s.nome,
                            r.usuario_responsavel_id, u.nome,
@@ -55,6 +58,8 @@ class ReservaService:
     def listar_por_solicitante(self, solicitante_id):
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
+                regras.expirar_reservas(cursor)
+
                 cursor.execute("""
                     SELECT r.id, r.solicitante_id, s.nome,
                            r.usuario_responsavel_id, u.nome,
@@ -73,6 +78,8 @@ class ReservaService:
     def obter_por_id(self, reserva_id):
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
+                regras.expirar_reservas(cursor)
+
                 cursor.execute("""
                     SELECT r.id, r.solicitante_id, s.nome,
                            r.usuario_responsavel_id, u.nome,
@@ -135,24 +142,12 @@ class ReservaService:
                 "Não repita equipamentos na mesma reserva."
             )
 
-        solicitante_id = dados.get("solicitante_id")
-        responsavel_id = dados.get("usuario_responsavel_id")
-
-        if (
-            not isinstance(solicitante_id, int)
-            or isinstance(solicitante_id, bool)
-            or solicitante_id <= 0
-        ):
-            raise ValueError("Informe um ID de solicitante válido.")
-
-        if responsavel_id is not None and (
-            not isinstance(responsavel_id, int)
-            or isinstance(responsavel_id, bool)
-            or responsavel_id <= 0
-        ):
-            raise ValueError(
-                "O ID do responsável deve ser um inteiro positivo."
-            )
+        solicitante_id = identificadores.solicitante_id(
+            dados.get("solicitante_id")
+        )
+        responsavel_id = identificadores.usuario_id_opcional(
+            dados.get("usuario_responsavel_id"), "responsável"
+        )
 
         inicio_texto = dados.get("data_inicio")
         fim_texto = dados.get("data_fim")
@@ -196,6 +191,8 @@ class ReservaService:
                 "A data final deve ser posterior à data inicial."
             )
 
+        regras.validar_periodo_reserva(inicio, fim)
+
         Reserva(
             solicitante_id=solicitante_id,
             data_inicio=inicio,
@@ -218,6 +215,9 @@ class ReservaService:
                     raise ValueError(
                         "Solicitante não encontrado ou inativo."
                     )
+
+                regras.verificar_pendencias(cursor, solicitante_id)
+                regras.expirar_reservas(cursor)
 
                 if responsavel_id is not None:
                     cursor.execute("""
@@ -363,6 +363,8 @@ class ReservaService:
 
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
+                regras.expirar_reservas(cursor)
+
                 cursor.execute("""
                     SELECT status, data_inicio, data_fim, solicitante_id
                     FROM reservas
@@ -398,6 +400,20 @@ class ReservaService:
                     )
 
                 if operacao == "aprovar":
+                    # A pessoa pode ter atrasado uma devolução ou mudado
+                    # de tipo desde o pedido.
+                    regras.verificar_pendencias(cursor, dono_reserva_id)
+
+                    cursor.execute("""
+                        SELECT s.tipo, array_agg(ir.equipamento_id)
+                        FROM solicitantes s
+                        JOIN itens_reserva ir ON ir.reserva_id = %s
+                        WHERE s.id = %s
+                        GROUP BY s.tipo
+                    """, (reserva_id, dono_reserva_id))
+                    tipo, itens = cursor.fetchone()
+                    verificar_elegibilidade(cursor, tipo, list(itens))
+
                     # Confere se os equipamentos continuam disponíveis.
                     cursor.execute("""
                         SELECT ir.equipamento_id

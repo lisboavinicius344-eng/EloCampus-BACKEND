@@ -1,6 +1,7 @@
 from flask import Blueprint, g, jsonify, request
 
 from services.auth_service import AuthService
+from services.solicitacao_acesso_service import SolicitacaoAcessoService
 from services.auth_token import (
     gerar_token,
     requer_autenticacao_para_trocar_senha,
@@ -40,8 +41,10 @@ def login():
     }), 200
 
 
+@auth_bp.route("/solicitar-acesso", methods=["POST"])
+# Endereço antigo da tela de cadastro, mantido para o frontend atual.
 @auth_bp.route("/cadastro-aluno", methods=["POST"])
-def cadastrar_aluno():
+def solicitar_acesso():
     dados = request.get_json(silent=True)
 
     if not isinstance(dados, dict):
@@ -50,22 +53,19 @@ def cadastrar_aluno():
         }), 400
 
     try:
-        usuario, email_enviado = AuthService.cadastrar_aluno(dados)
+        SolicitacaoAcessoService().solicitar(dados)
     except ValueError as erro:
         return jsonify({"erro": str(erro)}), 400
 
-    mensagem = (
-        "Conta criada. Enviamos uma senha provisória para o seu e-mail."
-        if email_enviado
-        else "Conta criada, mas não foi possível enviar o e-mail com a "
-             "senha provisória. Procure a administração."
-    )
-
+    # A mesma resposta em todos os casos (pedido novo, pedido repetido ou
+    # e-mail que já tem conta): a tela não revela quem tem acesso.
     return jsonify({
-        "mensagem": mensagem,
-        "email_enviado": email_enviado,
-        "usuario": usuario
-    }), 201
+        "mensagem": (
+            "Solicitação enviada. Quando a administração aprovar, você "
+            "receberá no e-mail uma senha provisória para o primeiro "
+            "acesso. Se você já tem conta, use \"Esqueci minha senha\"."
+        )
+    }), 200
 
 
 @auth_bp.route("/esqueci-senha", methods=["POST"])

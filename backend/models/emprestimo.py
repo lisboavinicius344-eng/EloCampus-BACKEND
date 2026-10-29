@@ -1,5 +1,7 @@
 from datetime import datetime
 
+from services import identificadores
+
 
 class Emprestimo:
     STATUS_VALIDOS = ("em_andamento", "concluido", "cancelado")
@@ -11,11 +13,10 @@ class Emprestimo:
         data_prevista_devolucao,
         observacoes=None
     ):
-        if not isinstance(solicitante_id, int) or solicitante_id <= 0:
-            raise ValueError("O solicitante é obrigatório.")
-
-        if not isinstance(usuario_responsavel_id, int) or usuario_responsavel_id <= 0:
-            raise ValueError("O usuário responsável é obrigatório.")
+        solicitante_id = identificadores.solicitante_id(solicitante_id)
+        usuario_responsavel_id = identificadores.usuario_id(
+            usuario_responsavel_id, "usuário responsável"
+        )
 
         if not data_prevista_devolucao:
             raise ValueError("A data prevista para devolução é obrigatória.")

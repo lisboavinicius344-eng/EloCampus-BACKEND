@@ -7,7 +7,6 @@ from services.emprestimo_service import EmprestimoService
 @pytest.mark.parametrize(
     ("estado", "status_esperado"),
     [
-        ("novo", "disponivel"),
         ("bom", "disponivel"),
         ("regular", "disponivel"),
         ("danificado", "manutencao"),
@@ -45,15 +44,21 @@ def test_devolucao_define_status_do_equipamento(
             "obter_por_id",
             return_value={"id": 5, "status": "concluido"},
         ),
+        patch(
+            "services.emprestimo_service.abrir_automatica"
+        ) as abrir_manutencao,
     ):
         resultado = servico.devolver_equipamento(
             emprestimo_id=5,
             equipamento_id=10,
             estado_na_devolucao=estado,
-            usuario_id=2,
+            usuario_id="00000000-0000-4000-8000-000000000002",
         )
 
     assert resultado["status"] == "concluido"
+
+    # Devolvido danificado abre a manutenção na mesma transação.
+    assert abrir_manutencao.called == (estado == "danificado")
 
     atualizacoes = [
         chamada
@@ -67,17 +72,18 @@ def test_devolucao_define_status_do_equipamento(
     assert parametros == (status_esperado, estado, 10)
 
 
-def test_devolucao_rejeita_estado_de_conservacao_invalido():
+@pytest.mark.parametrize("estado", ["quebrado", "novo"])
+def test_devolucao_rejeita_estado_de_conservacao_invalido(estado):
     servico = EmprestimoService()
 
     with pytest.raises(
-        ValueError, match="Estado de conservação inválido"
+        ValueError, match="Estado na devolução inválido"
     ):
         servico.devolver_equipamento(
             emprestimo_id=5,
             equipamento_id=10,
-            estado_na_devolucao="quebrado",
-            usuario_id=2,
+            estado_na_devolucao=estado,
+            usuario_id="00000000-0000-4000-8000-000000000002",
         )
 
 
@@ -118,5 +124,5 @@ def test_devolucao_rejeita_emprestimo_inexistente():
                 emprestimo_id=5,
                 equipamento_id=10,
                 estado_na_devolucao="bom",
-                usuario_id=2,
+                usuario_id="00000000-0000-4000-8000-000000000002",
             )

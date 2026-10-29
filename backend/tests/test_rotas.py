@@ -9,13 +9,19 @@ from services.emprestimo_service import EmprestimoService
 from services.usuario_service import UsuarioService
 
 
+def uid(numero):
+    """UUID de teste do usuário "numero" (ids de usuário são UUID)."""
+    return f"00000000-0000-4000-8000-{numero:012d}"
+
+
 # (id, nome, email, papel, ativo, solicitante_id, deve_trocar_senha)
+# Ids de solicitante são texto.
 USUARIOS = {
-    1: (1, "Admin", "admin@teste.local", "admin", True, None, False),
-    2: (2, "Operador", "operador@teste.local", "operador", True, None, False),
-    3: (3, "Aluno", "aluno@teste.local", "aluno", True, 30, False),
-    4: (4, "Professor", "prof@teste.local", "professor", True, 40, False),
-    5: (5, "Novato", "novo@teste.local", "operador", True, None, True),
+    uid(1): (uid(1), "Admin", "admin@teste.local", "admin", True, None, False),
+    uid(2): (uid(2), "Operador", "operador@teste.local", "operador", True, None, False),
+    uid(3): (uid(3), "Aluno", "aluno@teste.local", "aluno", True, "30", False),
+    uid(4): (uid(4), "Professor", "prof@teste.local", "professor", True, "40", False),
+    uid(5): (uid(5), "Novato", "novo@teste.local", "operador", True, None, True),
 }
 
 
@@ -45,8 +51,9 @@ def autenticado():
         yield
 
 
-def _cabecalho(usuario_id):
-    return {"Authorization": f"Bearer {gerar_token(usuario_id)}"}
+def _cabecalho(usuario):
+    """Cabeçalho de login do usuário de teste 1 a 5."""
+    return {"Authorization": f"Bearer {gerar_token(uid(usuario))}"}
 
 
 @pytest.mark.parametrize(
@@ -125,12 +132,12 @@ def test_responsavel_do_emprestimo_vem_do_token(cliente, autenticado):
     ) as cadastrar:
         resposta = cliente.post(
             "/api/emprestimos/",
-            json={"usuario_responsavel_id": 1, "solicitante_id": 30},
+            json={"usuario_responsavel_id": uid(1), "solicitante_id": "30"},
             headers=_cabecalho(2),
         )
 
     assert resposta.status_code == 201
-    assert cadastrar.call_args.args[0]["usuario_responsavel_id"] == 2
+    assert cadastrar.call_args.args[0]["usuario_responsavel_id"] == uid(2)
 
 
 def test_cors_libera_o_frontend(cliente):
@@ -189,15 +196,15 @@ def test_emprestimo_recusa_devolucao_no_passado():
     with pytest.raises(ValueError, match="no futuro"):
         EmprestimoService().cadastrar({
             "equipamentos": [1],
-            "solicitante_id": 30,
-            "usuario_responsavel_id": 2,
+            "solicitante_id": "30",
+            "usuario_responsavel_id": uid(2),
             "data_prevista_devolucao": ontem.isoformat(),
         })
 
 
 def test_usuario_nao_desativa_a_propria_conta():
     with pytest.raises(ValueError, match="própria conta"):
-        UsuarioService().desativar(1, usuario_logado_id=1)
+        UsuarioService().desativar(uid(1), usuario_logado_id=uid(1))
 
 
 def test_cadastro_de_usuario_recusa_papel_aluno():
@@ -273,7 +280,7 @@ def test_elegibilidade_de_equipamento_restrito(tipo, permitido):
 
 RESERVA_APROVADA = {
     "id": 8,
-    "solicitante_id": 30,
+    "solicitante_id": "30",
     "data_fim": "2026-12-01T17:00:00+00:00",
     "observacoes": "TCC",
     "itens": [{"equipamento_id": 2}, {"equipamento_id": 5}],
@@ -298,10 +305,10 @@ def test_retirada_usa_os_dados_da_reserva(cliente, autenticado):
     assert resposta.status_code == 201
     dados = cadastrar.call_args.args[0]
     assert cadastrar.call_args.kwargs["reserva_id"] == 8
-    assert dados["solicitante_id"] == 30
+    assert dados["solicitante_id"] == "30"
     assert dados["equipamentos"] == [2, 5]
     assert dados["data_prevista_devolucao"] == RESERVA_APROVADA["data_fim"]
-    assert dados["usuario_responsavel_id"] == 2
+    assert dados["usuario_responsavel_id"] == uid(2)
 
 
 def test_retirada_aceita_outra_data_de_devolucao(cliente, autenticado):
@@ -348,13 +355,31 @@ def test_retirada_de_reserva_inexistente(cliente, autenticado):
     assert resposta.status_code == 404
 
 
+AGORA = datetime.now(timezone.utc)
+EM_ANDAMENTO = (AGORA - timedelta(hours=1), AGORA + timedelta(hours=3))
+
+
 @pytest.mark.parametrize(
     ("reserva", "itens_reservados", "mensagem"),
     [
         (None, [], "não encontrada"),
-        (("pendente", 30), [(2,)], "aprovada"),
-        (("aprovada", 99), [(2,)], "solicitante"),
-        (("aprovada", 30), [(2,), (7,)], "equipamentos"),
+        (("pendente", 30, *EM_ANDAMENTO), [(2,)], "aprovada"),
+        (("aprovada", 99, *EM_ANDAMENTO), [(2,)], "solicitante"),
+        (("aprovada", 30, *EM_ANDAMENTO), [(2,), (7,)], "equipamentos"),
+        # Retirada cedo demais: a reserva começa daqui a 3 dias.
+        (
+            ("aprovada", 30, AGORA + timedelta(days=3),
+             AGORA + timedelta(days=4)),
+            [(2,)],
+            "2 horas antes",
+        ),
+        # Retirada depois do fim do período.
+        (
+            ("aprovada", 30, AGORA - timedelta(hours=5),
+             AGORA - timedelta(hours=1)),
+            [(2,)],
+            "já terminou",
+        ),
     ],
 )
 def test_validacao_da_reserva_na_retirada(reserva, itens_reservados, mensagem):

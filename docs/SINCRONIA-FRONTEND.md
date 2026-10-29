@@ -221,6 +221,36 @@ A API guarda a foto. Três ajustes no front:
    `null`, manter a silhueta atual. No `normalizarEquipamento`:
    `imagem: e.imagem_url ? API_BASE_URL + e.imagem_url : ""`.
 
+### 2.9 Revisão das regras de negócio (29/10)
+
+O backend passou a aplicar as regras abaixo. As mensagens de recusa
+chegam prontas no campo `erro`; o que muda no front:
+
+1. **Solicitar acesso (`cadastro.html`)**: a pessoa informa nome e
+   e-mail (e, opcionalmente, aluno/professor, matrícula e uma mensagem)
+   em `POST /auth/solicitar-acesso`. Tirar o campo "Código do
+   solicitante". Mostrar sempre a `mensagem` da resposta.
+2. **Tela nova do admin "Solicitações de acesso"** (seção 13.1 da
+   API): lista de pendentes com **Aprovar** (confirma aluno/professor)
+   e **Recusar** (motivo opcional). Ao aprovar, o e-mail com a senha
+   provisória sai sozinho.
+2.1 **Ids de pessoas viraram texto** (usuário: UUID; solicitante:
+   texto). Nada de `Number(...)` com eles.
+2.2 **Criar sua senha**: a senha provisória vale um único acesso; a
+   tela envia só `nova_senha` (o campo "senha provisória" pode sair).
+2.3 **Solicitantes**: não mostrar "Código do solicitante"; e-mail
+   obrigatório para aluno e professor; campo **Matrícula / SIAPE**;
+   coluna `tem_conta`.
+3. **Manutenções → Finalizar**: campo "Estado após a manutenção"
+   (`estado_conservacao`: `novo`, `bom`, `regular`; padrão `bom`).
+4. **Devoluções**: tirar a opção "Novo" do estado na devolução.
+5. **Reservas**: rótulo para o status `expirada`. O botão "Registrar
+   retirada" só funciona de 2 horas antes do início até o fim da
+   reserva.
+6. **Formulários de data**: reserva começa no futuro, com até 30 dias de
+   antecedência e até 7 dias de duração; empréstimo com devolução em até
+   15 dias. Limitar os campos de data (`min`/`max`) evita a recusa.
+
 ---
 
 ## 3. Mapa completo: rota → tela

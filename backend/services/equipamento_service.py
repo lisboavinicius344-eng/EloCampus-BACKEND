@@ -5,6 +5,7 @@ import psycopg
 from database.conexao import Conexao
 from models.equipamento import Equipamento
 from services import imagem_equipamento
+from services.manutencao_service import abrir_automatica
 from services.painel_service import SITUACAO_SQL
 from services.n8n_service import notificar_equipamento
 
@@ -135,6 +136,14 @@ class EquipamentoService:
 
                     equipamento_id = cursor.fetchone()[0]
 
+                    if equipamento["status"] == "manutencao":
+                        abrir_automatica(
+                            cursor,
+                            equipamento_id,
+                            None,
+                            "Cadastrado com conservação danificada.",
+                        )
+
         except psycopg.errors.UniqueViolation:
             raise ValueError(
                 "Já existe um equipamento com esse número de patrimônio."
@@ -179,6 +188,23 @@ class EquipamentoService:
                                 "a conservação durante a devolução."
                             )
 
+                    cursor.execute("""
+                        SELECT 1
+                        FROM manutencoes
+                        WHERE equipamento_id = %s
+                          AND status IN ('aberta', 'em_andamento')
+                    """, (equipamento_id,))
+                    manutencao_aberta = cursor.fetchone() is not None
+
+                    # Com manutenção aberta, quem libera o equipamento é
+                    # a finalização da manutenção, não a edição.
+                    if manutencao_aberta and novo_estado != estado_atual:
+                        raise ValueError(
+                            "Este equipamento está em manutenção. A "
+                            "conservação é atualizada ao finalizar a "
+                            "manutenção."
+                        )
+
                     equipamento["categoria_id"] = self._resolver_categoria(
                         cursor, equipamento
                     )
@@ -186,13 +212,10 @@ class EquipamentoService:
                     # O status operacional não é recebido livremente
                     # do cliente. A conservação danificada exige
                     # manutenção, exceto durante um empréstimo.
-                    if status_atual == "emprestado":
+                    if status_atual in ("emprestado", "baixado"):
                         novo_status = status_atual
 
-                    elif status_atual == "baixado":
-                        novo_status = status_atual
-
-                    elif novo_estado == "danificado":
+                    elif manutencao_aberta or novo_estado == "danificado":
                         novo_status = "manutencao"
 
                     else:
@@ -224,6 +247,15 @@ class EquipamentoService:
                         equipamento.get("elegibilidade"),
                         equipamento_id
                     ))
+
+                    if novo_status == "manutencao" and not manutencao_aberta:
+                        abrir_automatica(
+                            cursor,
+                            equipamento_id,
+                            None,
+                            "Conservação alterada para danificada no "
+                            "cadastro do equipamento.",
+                        )
 
                     if acao_imagem != imagem_equipamento.MANTER:
                         cursor.execute("""

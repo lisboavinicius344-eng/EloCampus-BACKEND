@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from database.conexao import Conexao
+from services import identificadores
 
 
 class HistoricoService:
@@ -75,12 +76,7 @@ class HistoricoService:
         ):
             raise ValueError("O tipo de movimentação é obrigatório.")
 
-        if usuario_id is not None and (
-            not isinstance(usuario_id, int)
-            or isinstance(usuario_id, bool)
-            or usuario_id <= 0
-        ):
-            raise ValueError("Informe um usuario_id válido.")
+        usuario_id = identificadores.usuario_id_opcional(usuario_id)
 
         if emprestimo_id is not None and (
             not isinstance(emprestimo_id, int)

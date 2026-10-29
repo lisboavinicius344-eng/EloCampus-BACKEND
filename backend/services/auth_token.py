@@ -5,6 +5,7 @@ from flask import request, jsonify, g
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 from database.conexao import Conexao
+from services import identificadores
 
 
 # Equipe que administra o sistema.
@@ -22,7 +23,8 @@ def _serializer():
 
 
 def gerar_token(usuario_id):
-    return _serializer().dumps({"usuario_id": usuario_id})
+    # O id é UUID: vai no token como texto.
+    return _serializer().dumps({"usuario_id": str(usuario_id)})
 
 
 def _usuario_do_token():
@@ -40,8 +42,9 @@ def _usuario_do_token():
     except BadSignature:
         return None, "Token inválido."
 
-    usuario_id = dados.get("usuario_id")
-    if not isinstance(usuario_id, int):
+    try:
+        usuario_id = identificadores.usuario_id(dados.get("usuario_id"))
+    except ValueError:
         return None, "Token inválido."
 
     with Conexao.conectar() as conn:
@@ -61,7 +64,7 @@ def _usuario_do_token():
         return None, "Usuário inativo ou inexistente."
 
     return {
-        "id": usuario[0],
+        "id": str(usuario[0]),
         "nome": usuario[1],
         "email": usuario[2],
         "papel": usuario[3],

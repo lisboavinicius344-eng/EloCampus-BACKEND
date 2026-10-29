@@ -2,10 +2,48 @@ import logging
 from datetime import datetime, timezone
 
 from database.conexao import Conexao
+from services import identificadores
 from services.n8n_service import notificar_manutencao
 
 
 logger = logging.getLogger(__name__)
+
+# Estados com que um equipamento pode sair da manutenção.
+ESTADOS_APOS_MANUTENCAO = ("novo", "bom", "regular")
+
+
+def abrir_automatica(cursor, equipamento_id, usuario_id, descricao,
+                     observacoes=None):
+    """Abre a manutenção de um equipamento que ficou danificado.
+
+    Usada na devolução e no cadastro do equipamento, dentro da mesma
+    transação. Se já houver manutenção aberta, só mantém o status.
+    """
+    cursor.execute("""
+        SELECT id
+        FROM manutencoes
+        WHERE equipamento_id = %s
+          AND status IN ('aberta', 'em_andamento')
+        LIMIT 1
+    """, (equipamento_id,))
+
+    if cursor.fetchone() is None:
+        cursor.execute("""
+            INSERT INTO manutencoes (
+                equipamento_id,
+                usuario_responsavel_id,
+                descricao_problema,
+                status,
+                observacoes
+            )
+            VALUES (%s, %s, %s, 'aberta', %s)
+        """, (equipamento_id, usuario_id, descricao, observacoes))
+
+    cursor.execute("""
+        UPDATE equipamentos
+        SET status = 'manutencao'
+        WHERE id = %s
+    """, (equipamento_id,))
 
 
 class ManutencaoService:
@@ -95,12 +133,9 @@ class ManutencaoService:
         if not isinstance(descricao, str) or not descricao.strip():
             raise ValueError("A descrição do problema é obrigatória.")
 
-        if responsavel_id is not None and (
-            not isinstance(responsavel_id, int)
-            or isinstance(responsavel_id, bool)
-            or responsavel_id <= 0
-        ):
-            raise ValueError("O responsável informado é inválido.")
+        responsavel_id = identificadores.usuario_id_opcional(
+            responsavel_id, "responsável"
+        )
 
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
@@ -118,6 +153,13 @@ class ManutencaoService:
                 if equipamento[1] == "baixado":
                     raise ValueError(
                         "Não é possível abrir manutenção para equipamento baixado."
+                    )
+
+                if equipamento[1] == "emprestado":
+                    raise ValueError(
+                        "O equipamento está emprestado. Registre a "
+                        "devolução como \"danificado\": a manutenção é "
+                        "aberta automaticamente."
                     )
 
                 if responsavel_id is not None:
@@ -184,9 +226,17 @@ class ManutencaoService:
     def finalizar(self, manutencao_id, dados):
         solucao = dados.get("solucao")
         observacoes = dados.get("observacoes")
+        # Sem o campo, o equipamento volta como "bom".
+        estado_final = dados.get("estado_conservacao") or "bom"
 
         if not isinstance(solucao, str) or not solucao.strip():
             raise ValueError("Informe a solução aplicada.")
+
+        if estado_final not in ESTADOS_APOS_MANUTENCAO:
+            raise ValueError(
+                "Informe o estado do equipamento após a manutenção: "
+                + ", ".join(ESTADOS_APOS_MANUTENCAO) + "."
+            )
 
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
@@ -240,10 +290,11 @@ class ManutencaoService:
 
                 cursor.execute("""
                     UPDATE equipamentos
-                    SET status = 'disponivel'
+                    SET status = 'disponivel',
+                        estado_conservacao = %s
                     WHERE id = %s
                       AND status = 'manutencao'
-                """, (equipamento_id,))
+                """, (estado_final, equipamento_id))
 
         manutencao_finalizada = self.obter_por_id(manutencao_id)
         self._notificar_com_seguranca(

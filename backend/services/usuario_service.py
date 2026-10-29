@@ -117,7 +117,8 @@ class UsuarioService:
         return usuario, enviado, None if enviado else senha
 
     def desativar(self, usuario_id, usuario_logado_id):
-        if usuario_id == usuario_logado_id:
+        # Os ids chegam como UUID (rota) ou texto (token): compara em texto.
+        if str(usuario_id) == str(usuario_logado_id):
             raise ValueError("Você não pode desativar a própria conta.")
 
         with Conexao.conectar() as conexao:
@@ -164,7 +165,7 @@ class UsuarioService:
     @staticmethod
     def _para_dict(registro):
         return {
-            "id": registro[0],
+            "id": str(registro[0]),
             "nome": registro[1],
             "email": registro[2],
             "papel": registro[3],

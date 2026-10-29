@@ -19,7 +19,7 @@ def listar_usuarios():
     return jsonify({"usuarios": usuario_service.listar()}), 200
 
 
-@usuarios_bp.route("/<int:usuario_id>", methods=["GET"])
+@usuarios_bp.route("/<uuid:usuario_id>", methods=["GET"])
 @requer_papeis("admin")
 def obter_usuario(usuario_id):
     usuario = usuario_service.obter_por_id(usuario_id)
@@ -48,7 +48,7 @@ def cadastrar_usuario():
     ), 201
 
 
-@usuarios_bp.route("/<int:usuario_id>/reenviar-senha", methods=["PATCH"])
+@usuarios_bp.route("/<uuid:usuario_id>/reenviar-senha", methods=["PATCH"])
 @requer_papeis("admin")
 def reenviar_senha(usuario_id):
     resultado = usuario_service.reenviar_senha(usuario_id)
@@ -86,7 +86,7 @@ def _resposta_senha_provisoria(mensagem, usuario, enviado, senha):
     return resposta
 
 
-@usuarios_bp.route("/<int:usuario_id>/desativar", methods=["PATCH"])
+@usuarios_bp.route("/<uuid:usuario_id>/desativar", methods=["PATCH"])
 @requer_papeis("admin")
 def desativar_usuario(usuario_id):
     try:

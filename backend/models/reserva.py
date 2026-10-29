@@ -1,10 +1,14 @@
+from services import identificadores
+
+
 class Reserva:
     STATUS_VALIDOS = (
         "pendente",
         "aprovada",
         "rejeitada",
         "cancelada",
-        "concluida"
+        "concluida",
+        "expirada"
     )
 
     def __init__(
@@ -15,8 +19,7 @@ class Reserva:
         usuario_responsavel_id=None,
         observacoes=None
     ):
-        if not isinstance(solicitante_id, int) or isinstance(solicitante_id, bool) or solicitante_id <= 0:
-            raise ValueError("O solicitante é obrigatório.")
+        solicitante_id = identificadores.solicitante_id(solicitante_id)
 
         if not data_inicio or not data_fim:
             raise ValueError("As datas de início e fim são obrigatórias.")

@@ -23,7 +23,7 @@ def listar_solicitantes():
     }), 200
 
 
-@solicitantes_bp.route("/<int:solicitante_id>", methods=["GET"])
+@solicitantes_bp.route("/<string:solicitante_id>", methods=["GET"])
 @requer_autenticacao
 def obter_solicitante(solicitante_id):
     # Aluno e professor só podem consultar o próprio cadastro.
@@ -59,7 +59,7 @@ def cadastrar_solicitante():
         return jsonify({"erro": str(erro)}), 400
 
 
-@solicitantes_bp.route("/<int:solicitante_id>", methods=["PUT"])
+@solicitantes_bp.route("/<string:solicitante_id>", methods=["PUT"])
 @requer_papeis("admin", "operador")
 def atualizar_solicitante(solicitante_id):
     dados = request.get_json(silent=True)
@@ -81,10 +81,13 @@ def atualizar_solicitante(solicitante_id):
         return jsonify({"erro": str(erro)}), 400
 
 
-@solicitantes_bp.route("/<int:solicitante_id>/desativar", methods=["PATCH"])
+@solicitantes_bp.route("/<string:solicitante_id>/desativar", methods=["PATCH"])
 @requer_papeis("admin", "operador")
 def desativar_solicitante(solicitante_id):
-    solicitante = solicitante_service.desativar(solicitante_id)
+    try:
+        solicitante = solicitante_service.desativar(solicitante_id)
+    except ValueError as erro:
+        return jsonify({"erro": str(erro)}), 400
 
     if solicitante is None:
         return jsonify({

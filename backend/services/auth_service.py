@@ -1,6 +1,6 @@
+import secrets
 from datetime import datetime, timedelta, timezone
 
-import psycopg
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from database.conexao import Conexao
@@ -65,6 +65,12 @@ class AuthService:
                     ):
                         raise ValueError(MENSAGEM_SENHA_EXPIRADA)
 
+                    if deve_trocar_senha:
+                        # Senha provisória: vale um único acesso.
+                        AuthService._consumir_senha_provisoria(
+                            cur, usuario[0]
+                        )
+
                     if reset_hash is not None:
                         # Lembrou a senha: o pedido de recuperação perde
                         # o efeito.
@@ -76,27 +82,18 @@ class AuthService:
                     if reset_expira_em is None or reset_expira_em <= agora:
                         raise ValueError(MENSAGEM_SENHA_EXPIRADA)
 
-                    # A senha de recuperação vira a senha da conta, com a
-                    # troca obrigatória (o mesmo fluxo do primeiro acesso).
-                    cur.execute(
-                        """
-                        UPDATE usuarios
-                        SET senha_hash = reset_senha_hash,
-                            deve_trocar_senha = TRUE,
-                            senha_provisoria_expira_em = reset_senha_expira_em,
-                            reset_senha_hash = NULL,
-                            reset_senha_expira_em = NULL
-                        WHERE id = %s
-                        """,
-                        (usuario[0],)
-                    )
+                    # A senha de recuperação também vale um único acesso:
+                    # a conta passa a exigir a criação de uma senha nova
+                    # (o mesmo fluxo do primeiro acesso).
+                    AuthService._limpar_recuperacao(cur, usuario[0])
+                    AuthService._consumir_senha_provisoria(cur, usuario[0])
                     deve_trocar_senha = True
 
                 else:
                     raise ValueError("E-mail ou senha inválidos.")
 
         return {
-            "id": usuario[0],
+            "id": str(usuario[0]),
             "nome": usuario[1],
             "email": usuario[2],
             "papel": usuario[4],
@@ -169,6 +166,25 @@ class AuthService:
         )
 
     @staticmethod
+    def _consumir_senha_provisoria(cur, usuario_id):
+        """Troca no banco a senha provisória que acabou de ser usada.
+
+        Ela é substituída por um valor aleatório que ninguém conhece: o
+        e-mail recebido deixa de servir, e a pessoa cria a própria senha
+        com o token deste login (POST /auth/trocar-senha). Se sair antes,
+        usa "Esqueci minha senha".
+        """
+        cur.execute(
+            """
+            UPDATE usuarios
+            SET senha_hash = %s,
+                deve_trocar_senha = TRUE
+            WHERE id = %s
+            """,
+            (generate_password_hash(secrets.token_urlsafe(32)), usuario_id)
+        )
+
+    @staticmethod
     def _limpar_recuperacao(cur, usuario_id):
         cur.execute(
             """
@@ -181,117 +197,15 @@ class AuthService:
         )
 
     @staticmethod
-    def cadastrar_aluno(dados):
-        """Autocadastro de aluno ou professor.
-
-        A pessoa não escolhe a senha aqui: recebe uma senha provisória
-        por e-mail e cria a própria senha no primeiro acesso.
-        """
-        nome = dados.get("nome")
-        email = dados.get("email")
-        solicitante_id = dados.get("solicitante_id")
-
-        if not isinstance(nome, str) or not nome.strip():
-            raise ValueError("Informe o nome.")
-
-        if not isinstance(email, str) or "@" not in email:
-            raise ValueError("Informe um e-mail válido.")
-
-        if (
-            not isinstance(solicitante_id, int)
-            or isinstance(solicitante_id, bool)
-            or solicitante_id <= 0
-        ):
-            raise ValueError("Informe um solicitante_id válido.")
-
-        senha, senha_hash, expira_em = senha_provisoria.gerar()
-
-        try:
-            with Conexao.conectar() as conn:
-                with conn.cursor() as cur:
-                    # O papel da conta vem do tipo cadastrado pela
-                    # equipe, nunca de um valor escolhido pelo cliente.
-                    cur.execute(
-                        """
-                        SELECT tipo
-                        FROM solicitantes
-                        WHERE id = %s
-                          AND ativo = TRUE
-                          AND tipo IN ('aluno', 'professor')
-                        FOR UPDATE
-                        """,
-                        (solicitante_id,)
-                    )
-                    solicitante = cur.fetchone()
-
-                    if solicitante is None:
-                        raise ValueError(
-                            "Aluno ou professor não encontrado "
-                            "ou cadastro inativo."
-                        )
-
-                    papel = solicitante[0]
-
-                    cur.execute(
-                        """
-                        SELECT id
-                        FROM usuarios
-                        WHERE LOWER(email) = LOWER(%s)
-                        """,
-                        (email.strip(),)
-                    )
-                    if cur.fetchone() is not None:
-                        raise ValueError(
-                            "Já existe uma conta com esse e-mail."
-                        )
-
-                    cur.execute(
-                        """
-                        INSERT INTO usuarios
-                            (nome, email, senha_hash, papel, ativo,
-                             solicitante_id, deve_trocar_senha,
-                             senha_provisoria_expira_em)
-                        VALUES (%s, %s, %s, %s, TRUE, %s, TRUE, %s)
-                        RETURNING id, nome, email, papel, solicitante_id
-                        """,
-                        (
-                            nome.strip(),
-                            email.strip(),
-                            senha_hash,
-                            papel,
-                            solicitante_id,
-                            expira_em,
-                        )
-                    )
-                    registro = cur.fetchone()
-
-        except psycopg.errors.UniqueViolation:
-            raise ValueError(
-                "Já existe uma conta para esse solicitante ou e-mail."
-            ) from None
-
-        usuario = {
-            "id": registro[0],
-            "nome": registro[1],
-            "email": registro[2],
-            "papel": registro[3],
-            "solicitante_id": registro[4],
-        }
-
-        email_enviado = senha_provisoria.enviar(
-            usuario, senha, expira_em, "cadastro_aluno"
-        )
-
-        return usuario, email_enviado
-
-    @staticmethod
     def trocar_senha(usuario_id, dados):
-        """Troca a senha do próprio usuário (obrigatória no 1º acesso)."""
+        """Cria ou troca a senha do próprio usuário.
+
+        No primeiro acesso (e depois de "Esqueci minha senha"), a senha
+        provisória já foi consumida no login: o token desse login basta e
+        "senha_atual" é ignorada. Fora disso, a senha atual é exigida.
+        """
         senha_atual = dados.get("senha_atual")
         nova_senha = dados.get("nova_senha")
-
-        if not isinstance(senha_atual, str) or not senha_atual:
-            raise ValueError("Informe a senha atual.")
 
         if (
             not isinstance(nova_senha, str)
@@ -302,16 +216,11 @@ class AuthService:
                 f"{TAMANHO_MINIMO_SENHA} caracteres."
             )
 
-        if nova_senha == senha_atual:
-            raise ValueError(
-                "A nova senha deve ser diferente da senha atual."
-            )
-
         with Conexao.conectar() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT senha_hash
+                    SELECT senha_hash, deve_trocar_senha
                     FROM usuarios
                     WHERE id = %s AND ativo = TRUE
                     FOR UPDATE
@@ -323,8 +232,17 @@ class AuthService:
                 if registro is None:
                     raise ValueError("Usuário não encontrado ou inativo.")
 
-                if not check_password_hash(registro[0], senha_atual):
-                    raise ValueError("A senha atual está incorreta.")
+                if not registro[1]:
+                    if not isinstance(senha_atual, str) or not senha_atual:
+                        raise ValueError("Informe a senha atual.")
+
+                    if not check_password_hash(registro[0], senha_atual):
+                        raise ValueError("A senha atual está incorreta.")
+
+                    if nova_senha == senha_atual:
+                        raise ValueError(
+                            "A nova senha deve ser diferente da senha atual."
+                        )
 
                 cur.execute(
                     """

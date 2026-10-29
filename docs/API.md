@@ -34,6 +34,20 @@ As rotas funcionam com ou sem a barra final
 
 ## 2. Convenções
 
+### Identificadores
+
+| Recurso | Tipo do `id` | Exemplo |
+|---|---|---|
+| Usuários (contas) | **UUID** (texto) | `"3f6c1e2a-9b7d-4c1e-8a2f-0d9e5b7c4a11"` |
+| Solicitantes | **texto** (até 250 caracteres; o banco gera um UUID) | `"8f38fcd1-2c4b-4e0a-9f1d-7a6b5c4d3e2f"` |
+| Solicitações de acesso | **UUID** (texto) | |
+| Equipamentos, empréstimos, reservas, categorias, manutenções, histórico | número inteiro | `12` |
+
+- **Ids de pessoas não são números**: não use `Number(...)`,
+  `parseInt` nem `<input type="number">` com eles; envie e compare
+  como **texto**.
+- Nas URLs, use `encodeURIComponent(id)`.
+
 ### Datas
 
 - **Enviar:** formato ISO 8601 **com fuso horário**.
@@ -79,14 +93,21 @@ Todos os erros vêm em JSON, sempre no campo **`erro`**:
 
 Ninguém escolhe senha ao criar a conta. O fluxo é:
 
-1. A conta é criada (autocadastro ou pelo admin).
-2. A pessoa recebe por **e-mail** uma **senha provisória**, válida por
-   **24 horas**.
+1. A conta é criada: um **aluno ou professor** pede acesso em
+   **"Solicitar acesso"** e o **admin aprova** (seção 13.1); ou o
+   admin cria uma conta da **equipe** (seção 13).
+2. A pessoa recebe por **e-mail**, automaticamente, uma **senha
+   provisória**, válida por **24 horas**.
 3. Ela entra com essa senha. O login responde
    `"deve_trocar_senha": true`.
-4. O frontend leva para a tela **"Criar sua senha"**, que chama
-   `POST /auth/trocar-senha`.
+4. **A senha provisória vale um único acesso**: nesse login ela é
+   trocada no banco e não entra mais. O frontend leva direto para a
+   tela **"Criar sua senha"**, que chama `POST /auth/trocar-senha`
+   com o token desse login.
 5. A partir daí, tudo funciona normalmente.
+
+Se a pessoa sair antes de criar a senha, usa **"Esqueci minha
+senha"** para receber outra (que também vale um único acesso).
 
 Enquanto a senha não for trocada, **qualquer outra rota responde 403**
 com `"codigo": "TROCA_DE_SENHA_OBRIGATORIA"` — use esse código para
@@ -105,11 +126,11 @@ redirecionar à tela de criação de senha.
   "mensagem": "Login realizado com sucesso.",
   "token": "eyJ1c3VhcmlvX2lkIjozfQ.Z...",
   "usuario": {
-    "id": 3,
+    "id": "3f6c1e2a-9b7d-4c1e-8a2f-0d9e5b7c4a11",
     "nome": "Ana Beatriz Lima",
     "email": "ana@escola.edu.br",
     "papel": "aluno",
-    "solicitante_id": 30,
+    "solicitante_id": "8f38fcd1-2c4b-4e0a-9f1d-7a6b5c4d3e2f",
     "deve_trocar_senha": false
   }
 }
@@ -172,8 +193,13 @@ Como funciona:
 
 Usada no primeiro acesso e também para trocar a senha depois.
 
+- **Criar a senha** (login com `deve_trocar_senha: true`): basta
+  `{ "nova_senha": "..." }`. A senha provisória já foi consumida no
+  login; `senha_atual`, se vier, é ignorada.
+- **Trocar a senha** (conta já ativa): `senha_atual` é obrigatória.
+
 ```json
-{ "senha_atual": "k7PqR2mXzA", "nova_senha": "minhaSenhaNova" }
+{ "senha_atual": "minhaSenhaAntiga", "nova_senha": "minhaSenhaNova" }
 ```
 
 **200** — `{ "mensagem": "Senha alterada com sucesso." }`
@@ -181,41 +207,39 @@ Usada no primeiro acesso e também para trocar a senha depois.
 O **mesmo token** passa a acessar todas as rotas — não é preciso
 entrar de novo.
 
-Erros (400): senha atual incorreta, nova senha com menos de 8
-caracteres, nova senha igual à atual.
+Erros (400): nova senha com menos de 8 caracteres; na troca comum,
+senha atual ausente ou incorreta, ou nova senha igual à atual.
 
-### `POST /auth/cadastro-aluno` — público
+### `POST /auth/solicitar-acesso` — público
 
-Autocadastro de **alunos e professores**. A pessoa precisa já estar
-cadastrada como solicitante pela equipe (tipo `aluno` ou `professor`).
-O papel da conta é definido pelo tipo desse cadastro.
+Tela **"Solicitar acesso"** (alunos e professores). O endereço antigo
+`POST /auth/cadastro-aluno` continua funcionando igual.
 
 ```json
 {
   "nome": "Ana Beatriz Lima",
   "email": "ana@escola.edu.br",
-  "solicitante_id": 30
+  "tipo": "aluno",
+  "matricula": "2024001",
+  "mensagem": "Sou do 3º semestre de Informática"
 }
 ```
 
-Não há campo de senha: a senha provisória chega pelo e-mail.
+- Obrigatórios: `nome` e `email`.
+- Opcionais: `tipo` (`aluno` ou `professor`; o admin confirma na
+  aprovação), `matricula`, `mensagem` (até 500 caracteres).
+- Se a variável `ACESSO_DOMINIOS_PERMITIDOS` estiver configurada no
+  backend (ex.: `ufob.edu.br`), só e-mails desses domínios são aceitos.
 
-**201**
+**200**, sempre com a mesma resposta (pedido novo, pedido repetido ou
+e-mail que já tem conta), para a tela não revelar quem tem acesso:
 
 ```json
-{
-  "mensagem": "Conta criada. Enviamos uma senha provisória para o seu e-mail.",
-  "email_enviado": true,
-  "usuario": { "id": 3, "nome": "Ana Beatriz Lima", "email": "ana@escola.edu.br", "papel": "aluno", "solicitante_id": 30 }
-}
+{ "mensagem": "Solicitação enviada. Quando a administração aprovar, você receberá no e-mail uma senha provisória para o primeiro acesso. Se você já tem conta, use \"Esqueci minha senha\"." }
 ```
 
-Se `email_enviado` for `false`, a conta foi criada mas o e-mail falhou:
-mostre a `mensagem`, que orienta a procurar a administração (o admin
-pode reenviar a senha). A senha **nunca** aparece nesta resposta.
-
-Erros (400): e-mail inválido ou já usado, solicitante
-inexistente/inativo/de outro tipo, solicitante que já tem conta.
+**400** quando faltam dados ou o e-mail é inválido. Nenhum e-mail é
+enviado neste momento: ele só sai quando o admin aprova.
 
 ---
 
@@ -436,26 +460,40 @@ Pessoas que recebem empréstimos e fazem reservas.
 
 ```json
 {
-  "id": 30,
+  "id": "8f38fcd1-2c4b-4e0a-9f1d-7a6b5c4d3e2f",
   "nome": "Ana Beatriz Lima",
   "tipo": "aluno",
   "setor": "Curso de Informática",
   "email": "ana@escola.edu.br",
   "telefone": "(77) 99999-0000",
+  "matricula": "2024001",
   "ativo": true,
-  "criado_em": "2026-10-01T12:00:00+00:00"
+  "criado_em": "2026-10-01T12:00:00+00:00",
+  "tem_conta": false
 }
 ```
 
-`tipo`: `aluno`, `servidor`, `professor`, `tecnico`, `externo`.
+- `tipo`: `aluno`, `servidor`, `professor`, `tecnico`, `externo`.
+- `email`: **obrigatório para `aluno` e `professor`** (é por ele que a
+  pessoa cria a conta) e único entre solicitantes ativos. Guardado em
+  minúsculas.
+- `matricula`: opcional (matrícula ou SIAPE), única.
+- `tem_conta`: se a pessoa já criou a conta de acesso.
 
 | Método e rota | Quem | Corpo / resposta |
 |---|---|---|
 | `GET /solicitantes` | admin, operador | `{ "solicitantes": [...] }` |
 | `GET /solicitantes/<id>` | logado | `{ "solicitante": {...} }` — aluno/professor só o próprio |
-| `POST /solicitantes` | admin, operador | `{ "nome", "tipo", "setor", "email", "telefone" }` → **201** |
+| `POST /solicitantes` | admin, operador | `{ "nome", "tipo", "email", "matricula"?, "setor"?, "telefone"? }` → **201** |
 | `PUT /solicitantes/<id>` | admin, operador | Mesmo corpo do `POST` |
 | `PATCH /solicitantes/<id>/desativar` | admin, operador | 404 se não existir ou já estiver desativado |
+
+- **Mudar o tipo** de quem tem conta: aluno ↔ professor atualiza a conta
+  junto; virar servidor, técnico ou externo é recusado (400), porque
+  esses tipos não têm conta.
+- **Desativar** é recusado (400) enquanto a pessoa estiver com algum
+  equipamento. Ao desativar, a **conta dela também é desativada** e as
+  reservas pendentes ou aprovadas são canceladas.
 
 ---
 
@@ -475,9 +513,9 @@ passa para `concluido`.
 ```json
 {
   "id": 5,
-  "solicitante_id": 30,
+  "solicitante_id": "8f38fcd1-2c4b-4e0a-9f1d-7a6b5c4d3e2f",
   "solicitante": "Ana Beatriz Lima",
-  "usuario_responsavel_id": 2,
+  "usuario_responsavel_id": "1b9e7d2c-5f4a-4e3b-9c8d-7e6f5a4b3c2d",
   "usuario_responsavel": "Operador",
   "data_emprestimo": "2026-10-21T12:00:00+00:00",
   "data_prevista_devolucao": "2026-10-24T21:00:00+00:00",
@@ -516,7 +554,7 @@ passa para `concluido`.
 
 ```json
 {
-  "solicitante_id": 30,
+  "solicitante_id": "8f38fcd1-2c4b-4e0a-9f1d-7a6b5c4d3e2f",
   "equipamentos": [3, 7],
   "data_prevista_devolucao": "2026-10-24T18:00:00-03:00",
   "observacoes": "Uso em aula prática"
@@ -524,7 +562,10 @@ passa para `concluido`.
 ```
 
 - O responsável é **o usuário logado** (não é enviado).
-- `data_prevista_devolucao` precisa estar no futuro.
+- `data_prevista_devolucao` precisa estar no futuro e em **no máximo
+  15 dias**.
+- Quem tem **equipamento com devolução atrasada** não pega outro
+  emprestado nem reserva (400), até a devolução.
 - Todos os equipamentos precisam estar `disponivel` e não danificados.
 - A API recusa (400) equipamentos que **outra pessoa** tem reservados
   (reserva aprovada) dentro do período do empréstimo. A mensagem informa
@@ -536,8 +577,10 @@ passa para `concluido`.
 { "estado_na_devolucao": "bom", "observacoes": "Sem avarias" }
 ```
 
-`estado_na_devolucao`: `novo`, `bom`, `regular` ou `danificado`.
-Devolvido `danificado`, o equipamento vai automaticamente para manutenção.
+`estado_na_devolucao`: `bom`, `regular` ou `danificado` (um item não
+volta `novo`). Devolvido `danificado`, o equipamento vai para manutenção
+e **a manutenção é aberta automaticamente**, com as observações da
+devolução; ela aparece em `GET /manutencoes`.
 
 > **Diferença para o `api.js` atual:** o demo usa `POST /devolucoes`
 > com vários itens de uma vez. Na API, chame a rota de devolução **uma
@@ -547,14 +590,14 @@ Devolvido `danificado`, o equipamento vai automaticamente para manutenção.
 
 ---
 
-## 10. Reservas (tela a ser criada)
+## 10. Reservas
 
 ### Objeto reserva
 
 ```json
 {
   "id": 12,
-  "solicitante_id": 30,
+  "solicitante_id": "8f38fcd1-2c4b-4e0a-9f1d-7a6b5c4d3e2f",
   "solicitante": "Ana Beatriz Lima",
   "usuario_responsavel_id": null,
   "usuario_responsavel": null,
@@ -571,6 +614,12 @@ Devolvido `danificado`, o equipamento vai automaticamente para manutenção.
 
 `status`: `pendente` → `aprovada` | `rejeitada` | `cancelada`;
 `aprovada` → `cancelada` | `concluida` (quando a retirada é registrada).
+
+**`expirada`** é aplicado automaticamente:
+- reserva `pendente` cujo **início já passou** sem análise da equipe;
+- reserva `aprovada` cujo **fim já passou** sem retirada.
+
+Reserva expirada não pode ser aprovada, cancelada nem retirada.
 
 ### Rotas
 
@@ -608,6 +657,8 @@ O corpo é **opcional**:
   uma data futura (400).
 - Sem `observacoes`, usa as observações da reserva.
 - O responsável é o usuário logado.
+- **Quando:** a partir de **2 horas antes do início** até o **fim** do
+  período reservado. Fora disso, 400 com a explicação.
 
 **201**
 
@@ -638,6 +689,9 @@ Sugestão de tela: na lista de reservas aprovadas, um botão
   (e opcionalmente `"usuario_responsavel_id"`).
 - As datas **precisam ter fuso horário** e `data_fim` deve ser depois de
   `data_inicio`.
+- **Limites:** começar no **futuro**, com no máximo **30 dias** de
+  antecedência, e durar no máximo **7 dias**.
+- Quem tem **equipamento com devolução atrasada** não reserva (400).
 - Equipamentos **emprestados** podem ser reservados, desde que a
   devolução prevista seja **antes** do início da reserva.
 - A API recusa (400):
@@ -646,7 +700,8 @@ Sugestão de tela: na lista de reservas aprovadas, um botão
   - períodos que conflitam com empréstimos em andamento — e, se o
     empréstimo estiver **atrasado**, qualquer período, até a devolução;
   - equipamentos restritos a funcionários (para alunos).
-- As mesmas verificações são refeitas na **aprovação**.
+- As mesmas verificações (disponibilidade, conflitos, elegibilidade e
+  atraso da pessoa) são refeitas na **aprovação**.
 
 ---
 
@@ -658,7 +713,7 @@ Sugestão de tela: na lista de reservas aprovadas, um botão
   "equipamento_id": 9,
   "equipamento": "Caixa de som Bose",
   "numero_patrimonio": "AUD-0044",
-  "usuario_responsavel_id": 2,
+  "usuario_responsavel_id": "1b9e7d2c-5f4a-4e3b-9c8d-7e6f5a4b3c2d",
   "responsavel": "Operador",
   "descricao_problema": "Chiado no alto-falante",
   "data_abertura": "2026-10-20T13:15:00+00:00",
@@ -676,10 +731,19 @@ Sugestão de tela: na lista de reservas aprovadas, um botão
 | `GET /manutencoes` | `{ "manutencoes": [...] }` |
 | `GET /manutencoes/<id>` | `{ "manutencao": {...} }` |
 | `POST /manutencoes` | `{ "equipamento_id", "descricao_problema", "usuario_responsavel_id"?, "observacoes"? }` → **201** |
-| `PATCH /manutencoes/<id>/finalizar` | `{ "solucao", "observacoes"? }` |
+| `PATCH /manutencoes/<id>/finalizar` | `{ "solucao", "estado_conservacao"?, "observacoes"? }` |
 
-Abrir a manutenção coloca o equipamento em `manutencao`; finalizar o
-devolve a `disponivel`. Só pode haver uma manutenção aberta por equipamento.
+- Abrir a manutenção coloca o equipamento em `manutencao`. Só pode haver
+  uma manutenção aberta por equipamento.
+- **Equipamento emprestado não recebe manutenção** (400): registre a
+  devolução como `danificado`, que abre a manutenção automaticamente.
+  Ela também é aberta sozinha quando um equipamento é cadastrado ou
+  editado com conservação `danificado`.
+- **Finalizar** devolve o equipamento a `disponivel` com a conservação
+  informada em `estado_conservacao`: `novo`, `bom` (padrão) ou
+  `regular`.
+- Enquanto houver manutenção aberta, editar o equipamento não muda a
+  conservação (400): ela é atualizada ao finalizar.
 
 ---
 
@@ -694,7 +758,7 @@ devolve a `disponivel`. Só pode haver uma manutenção aberta por equipamento.
     "id": 31,
     "equipamento_id": 3,
     "equipamento_nome": "Notebook Dell Latitude",
-    "usuario_id": 2,
+    "usuario_id": "1b9e7d2c-5f4a-4e3b-9c8d-7e6f5a4b3c2d",
     "usuario_nome": "Operador",
     "emprestimo_id": 5,
     "tipo_movimentacao": "emprestimo",
@@ -711,6 +775,60 @@ devolve a `disponivel`. Só pode haver uma manutenção aberta por equipamento.
 | `POST /historico` | `{ "equipamento_id", "tipo_movimentacao", "usuario_id"?, "emprestimo_id"?, "descricao"? }` → **201** |
 
 O backend registra sozinho os tipos `emprestimo` e `devolucao`.
+
+---
+
+## 13.1 Solicitações de acesso (somente admin)
+
+Objeto:
+
+```json
+{
+  "id": "6d1f0c3e-2a4b-4c5d-8e9f-0a1b2c3d4e5f",
+  "nome": "Ana Beatriz Lima",
+  "email": "ana@escola.edu.br",
+  "tipo": "aluno",
+  "matricula": "2024001",
+  "mensagem": "Sou do 3º semestre de Informática",
+  "status": "pendente",
+  "criado_em": "2026-10-29T12:00:00+00:00",
+  "analisado_por": null,
+  "analisado_por_nome": null,
+  "analisado_em": null,
+  "motivo_recusa": null,
+  "usuario_id": null
+}
+```
+
+`status`: `pendente` → `aprovada` | `recusada`.
+
+| Método e rota | Corpo / resposta |
+|---|---|
+| `GET /solicitacoes-acesso?status=pendente` | `{ "solicitacoes": [...] }` (pendentes primeiro; `status` opcional: `pendente`, `aprovada`, `recusada`) |
+| `GET /solicitacoes-acesso/<id>` | `{ "solicitacao": {...} }` |
+| `POST /solicitacoes-acesso/<id>/aprovar` | corpo opcional (abaixo) → `{ "mensagem", "email_enviado", "solicitacao", "usuario" }` |
+| `POST /solicitacoes-acesso/<id>/recusar` | `{ "motivo"? }` → `{ "mensagem", "solicitacao" }` |
+
+**Aprovar** cria a conta e **envia o e-mail com a senha provisória
+automaticamente**. O corpo é opcional e serve para o admin confirmar
+ou corrigir os dados:
+
+```json
+{ "tipo": "aluno", "nome": "Ana Beatriz Lima", "matricula": "2024001", "setor": "Informática", "telefone": "(77) 99999-0000" }
+```
+
+- `tipo` é obrigatório se o pedido veio sem ele.
+- Se já existir um **solicitante ativo com o mesmo e-mail** (cadastrado
+  pela equipe), a conta é **vinculada** a ele. Para vincular a outro
+  solicitante, envie `"solicitante_id"`.
+- Se não existir, o solicitante é **criado** com os dados do pedido.
+- Se o e-mail falhar (`"email_enviado": false`), a resposta traz
+  `"senha_provisoria"` para o admin repassar pessoalmente.
+- Erros (400): solicitação já analisada, e-mail que já tem conta,
+  solicitante de tipo sem conta (servidor, técnico, externo).
+
+**Recusar** não envia e-mail. Depois de recusada, a pessoa pode pedir
+de novo.
 
 ---
 

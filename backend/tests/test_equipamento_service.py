@@ -53,19 +53,9 @@ def test_equipamento_danificado_nao_fica_disponivel():
 from unittest.mock import MagicMock, patch
 
 
-@pytest.mark.parametrize(
-    ("status_atual", "estado_atual", "novo_estado", "status_esperado"),
-    [
-        ("disponivel", "bom", "danificado", "manutencao"),
-        ("manutencao", "danificado", "bom", "disponivel"),
-        ("manutencao", "danificado", "regular", "disponivel"),
-        ("manutencao", "danificado", "novo", "disponivel"),
-        ("baixado", "danificado", "bom", "baixado"),
-    ],
-)
-def test_atualizar_define_status_automaticamente(
-    status_atual, estado_atual, novo_estado, status_esperado
-):
+def _executar_atualizacao(status_atual, estado_atual, novo_estado,
+                          manutencao_aberta=False):
+    """Roda atualizar() com o banco simulado; devolve (cursor, abrir)."""
     servico = EquipamentoService()
 
     conexao = MagicMock()
@@ -76,8 +66,10 @@ def test_atualizar_define_status_automaticamente(
     conexao.cursor.return_value.__enter__.return_value = cursor
     conexao.cursor.return_value.__exit__.return_value = False
 
+    # Equipamento, manutenção aberta (ou não) e categoria ativa.
     cursor.fetchone.side_effect = [
         (1, status_atual, estado_atual),
+        (1,) if manutencao_aberta else None,
         (1,),
     ]
 
@@ -101,15 +93,33 @@ def test_atualizar_define_status_automaticamente(
                 "status": "disponivel",
             },
         ),
-        patch.object(
-            servico,
-            "obter_por_id",
-            return_value={"id": 1, "status": status_esperado},
-        ),
+        patch.object(servico, "obter_por_id", return_value={"id": 1}),
+        patch(
+            "services.equipamento_service.abrir_automatica"
+        ) as abrir_manutencao,
     ):
-        resultado = servico.atualizar(1, {})
+        servico.atualizar(1, {})
 
-    assert resultado["status"] == status_esperado
+    return cursor, abrir_manutencao
+
+
+@pytest.mark.parametrize(
+    ("status_atual", "estado_atual", "novo_estado", "status_esperado"),
+    [
+        ("disponivel", "bom", "danificado", "manutencao"),
+        # Em manutenção sem registro aberto (dados antigos): a edição
+        # ainda libera, para não deixar o equipamento preso.
+        ("manutencao", "danificado", "bom", "disponivel"),
+        ("manutencao", "danificado", "regular", "disponivel"),
+        ("baixado", "danificado", "bom", "baixado"),
+    ],
+)
+def test_status_definido_pela_conservacao(
+    status_atual, estado_atual, novo_estado, status_esperado
+):
+    cursor, abrir_manutencao = _executar_atualizacao(
+        status_atual, estado_atual, novo_estado
+    )
 
     chamadas_update = [
         chamada
@@ -117,9 +127,28 @@ def test_atualizar_define_status_automaticamente(
         if "UPDATE equipamentos" in chamada.args[0]
     ]
 
-    assert len(chamadas_update) == 1
-    parametros_update = chamadas_update[0].args[1]
-    assert parametros_update[6] == status_esperado
+    assert chamadas_update[0].args[1][6] == status_esperado
+    assert abrir_manutencao.called == (status_esperado == "manutencao")
+
+
+def test_manutencao_aberta_impede_liberar_pela_edicao():
+    with pytest.raises(ValueError, match="finalizar a manutenção"):
+        _executar_atualizacao(
+            "manutencao", "danificado", "bom", manutencao_aberta=True
+        )
+
+
+def test_manutencao_aberta_mantem_status_ao_editar_outros_campos():
+    cursor, abrir_manutencao = _executar_atualizacao(
+        "manutencao", "danificado", "danificado", manutencao_aberta=True
+    )
+
+    update = next(
+        chamada for chamada in cursor.execute.call_args_list
+        if "UPDATE equipamentos" in chamada.args[0]
+    )
+    assert update.args[1][6] == "manutencao"
+    assert not abrir_manutencao.called
 
 
 def test_atualizar_bloqueia_mudanca_de_conservacao_em_emprestado():

@@ -1,11 +1,12 @@
 from datetime import datetime, timedelta, timezone
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
+from werkzeug.security import generate_password_hash
 
 from services import senha_provisoria
 from services.auth_service import AuthService
-from tests.test_rotas import _cabecalho, autenticado, cliente  # noqa: F401
+from tests.test_rotas import _cabecalho, autenticado, cliente, uid  # noqa: F401
 
 
 def test_senha_gerada_e_legivel_e_expira_em_24h(monkeypatch):
@@ -47,7 +48,7 @@ def test_senha_pendente_permite_trocar_a_senha(cliente, autenticado):
         )
 
     assert resposta.status_code == 200
-    assert trocar.call_args.args[0] == 5
+    assert trocar.call_args.args[0] == uid(5)
 
 
 def test_trocar_senha_exige_login(cliente):
@@ -64,17 +65,56 @@ def test_senha_pendente_e_visitante_na_consulta_qr(cliente, autenticado):
     assert consultar.call_args.kwargs["incluir_emprestimo"] is False
 
 
+def _trocar_com_banco(dados, deve_trocar_senha, senha_hash="x"):
+    """Roda trocar_senha com o banco simulado; devolve o cursor."""
+    cursor = MagicMock()
+    cursor.fetchone.return_value = (senha_hash, deve_trocar_senha)
+    conexao = MagicMock()
+    conexao.__enter__.return_value = conexao
+    conexao.cursor.return_value.__enter__.return_value = cursor
+
+    with patch("services.auth_service.Conexao.conectar", return_value=conexao):
+        AuthService.trocar_senha(uid(1), dados)
+
+    return cursor
+
+
+def test_nova_senha_curta_e_recusada():
+    with pytest.raises(ValueError, match="pelo menos 8"):
+        AuthService.trocar_senha(uid(1), {"nova_senha": "curta"})
+
+
+def test_primeiro_acesso_nao_pede_a_senha_provisoria():
+    # A senha provisória já foi consumida no login: o token basta.
+    cursor = _trocar_com_banco({"nova_senha": "minhaNova123"}, True)
+
+    assert any(
+        "UPDATE usuarios" in chamada.args[0]
+        for chamada in cursor.execute.call_args_list
+    )
+
+
 @pytest.mark.parametrize(
     ("dados", "mensagem"),
     [
         ({"nova_senha": "12345678"}, "senha atual"),
-        ({"senha_atual": "x", "nova_senha": "curta"}, "pelo menos 8"),
-        ({"senha_atual": "igual12345", "nova_senha": "igual12345"}, "diferente"),
+        ({"senha_atual": "errada", "nova_senha": "12345678"}, "incorreta"),
     ],
 )
-def test_validacoes_da_troca_de_senha(dados, mensagem):
+def test_troca_comum_exige_a_senha_atual(dados, mensagem):
     with pytest.raises(ValueError, match=mensagem):
-        AuthService.trocar_senha(1, dados)
+        _trocar_com_banco(
+            dados, False, senha_hash=generate_password_hash("certa123")
+        )
+
+
+def test_troca_comum_exige_senha_diferente():
+    with pytest.raises(ValueError, match="diferente"):
+        _trocar_com_banco(
+            {"senha_atual": "igual12345", "nova_senha": "igual12345"},
+            False,
+            senha_hash=generate_password_hash("igual12345"),
+        )
 
 
 def test_login_avisa_primeiro_acesso(cliente):
@@ -92,16 +132,52 @@ def test_login_avisa_primeiro_acesso(cliente):
     assert "nova senha" in corpo["mensagem"]
 
 
-def test_autocadastro_nunca_devolve_a_senha(cliente):
-    with patch(
-        "routes.auth.AuthService.cadastrar_aluno",
-        return_value=({"id": 9}, False),
-    ):
-        resposta = cliente.post("/api/auth/cadastro-aluno", json={})
+@pytest.mark.parametrize(
+    "rota", ["/api/auth/solicitar-acesso", "/api/auth/cadastro-aluno"]
+)
+def test_solicitar_acesso_responde_igual_em_todos_os_casos(cliente, rota):
+    # Pedido novo, repetido ou de quem já tem conta: mesma resposta.
+    respostas = []
 
-    assert resposta.status_code == 201
-    assert resposta.get_json()["email_enviado"] is False
-    assert "senha_provisoria" not in resposta.get_json()
+    for criado in (True, False):
+        with patch(
+            "routes.auth.SolicitacaoAcessoService.solicitar",
+            return_value=criado,
+        ):
+            respostas.append(cliente.post(
+                rota, json={"nome": "Ana", "email": "a@b.c"}
+            ))
+
+    assert [r.status_code for r in respostas] == [200, 200]
+    assert respostas[0].get_json() == respostas[1].get_json()
+    assert list(respostas[0].get_json()) == ["mensagem"]
+
+
+@pytest.mark.parametrize(
+    ("corpo", "mensagem"),
+    [
+        ({"email": "a@b.c"}, "nome"),
+        ({"nome": "Ana", "email": "sem-arroba"}, "e-mail"),
+        ({"nome": "Ana", "email": "a@b.c", "tipo": "servidor"}, "aluno ou professor"),
+    ],
+)
+def test_solicitar_acesso_valida_os_dados(cliente, corpo, mensagem):
+    resposta = cliente.post("/api/auth/solicitar-acesso", json=corpo)
+
+    assert resposta.status_code == 400
+    assert mensagem in resposta.get_json()["erro"]
+
+
+def test_solicitar_acesso_restrito_ao_dominio(cliente, monkeypatch):
+    monkeypatch.setenv("ACESSO_DOMINIOS_PERMITIDOS", "ufob.edu.br")
+
+    resposta = cliente.post(
+        "/api/auth/solicitar-acesso",
+        json={"nome": "Ana", "email": "ana@gmail.com"},
+    )
+
+    assert resposta.status_code == 400
+    assert "@ufob.edu.br" in resposta.get_json()["erro"]
 
 
 @pytest.mark.parametrize(

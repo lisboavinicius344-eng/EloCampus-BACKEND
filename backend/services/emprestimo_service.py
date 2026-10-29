@@ -5,7 +5,9 @@ import psycopg
 
 from database.conexao import Conexao
 from models.emprestimo import Emprestimo
+from services import identificadores, regras
 from services.elegibilidade import verificar_elegibilidade
+from services.manutencao_service import abrir_automatica
 from services.n8n_service import (
     notificar_novo_emprestimo,
     notificar_devolucao_equipamento,
@@ -95,13 +97,12 @@ class EmprestimoService:
         if len(itens) != len(set(itens)):
             raise ValueError("Não repita equipamentos no mesmo empréstimo.")
 
-        try:
-            solicitante_id = int(dados.get("solicitante_id"))
-            usuario_id = int(dados.get("usuario_responsavel_id"))
-        except (TypeError, ValueError):
-            raise ValueError(
-                "Informe IDs válidos para solicitante e usuário responsável."
-            ) from None
+        solicitante_id = identificadores.solicitante_id(
+            dados.get("solicitante_id")
+        )
+        usuario_id = identificadores.usuario_id(
+            dados.get("usuario_responsavel_id"), "usuário responsável"
+        )
 
         previsto = dados.get("data_prevista_devolucao")
 
@@ -130,6 +131,8 @@ class EmprestimoService:
                 "A data prevista de devolução deve ser no futuro."
             )
 
+        regras.validar_prazo_emprestimo(data_prevista, agora)
+
         Emprestimo(
             solicitante_id,
             usuario_id,
@@ -152,6 +155,8 @@ class EmprestimoService:
                             "Solicitante não encontrado ou inativo."
                         )
 
+                    regras.verificar_pendencias(cursor, solicitante_id)
+
                     cursor.execute("""
                         SELECT id
                         FROM usuarios
@@ -164,6 +169,7 @@ class EmprestimoService:
                         )
 
                     if reserva_id is not None:
+                        regras.expirar_reservas(cursor)
                         self._validar_reserva(
                             cursor, reserva_id, solicitante_id, itens
                         )
@@ -306,17 +312,18 @@ class EmprestimoService:
         usuario_id,
         observacoes=None,
     ):
-        estados_validos = ("novo", "bom", "regular", "danificado")
+        # Um item não volta "novo": esse estado é só do cadastro.
+        estados_validos = ("bom", "regular", "danificado")
 
         if estado_na_devolucao not in estados_validos:
-            raise ValueError("Estado de conservação inválido.")
+            raise ValueError(
+                "Estado na devolução inválido. Use: bom, regular ou "
+                "danificado."
+            )
 
-        if (
-            not isinstance(usuario_id, int)
-            or isinstance(usuario_id, bool)
-            or usuario_id <= 0
-        ):
-            raise ValueError("Informe um usuário responsável válido.")
+        usuario_id = identificadores.usuario_id(
+            usuario_id, "usuário responsável"
+        )
 
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
@@ -390,6 +397,15 @@ class EmprestimoService:
                     equipamento_id,
                 ))
 
+                if estado_na_devolucao == "danificado":
+                    abrir_automatica(
+                        cursor,
+                        equipamento_id,
+                        usuario_id,
+                        f"Devolvido danificado (empréstimo #{emprestimo_id}).",
+                        observacoes,
+                    )
+
                 cursor.execute("""
                     INSERT INTO historico_movimentacoes (
                         equipamento_id,
@@ -437,7 +453,7 @@ class EmprestimoService:
     @staticmethod
     def _validar_reserva(cursor, reserva_id, solicitante_id, itens):
         cursor.execute("""
-            SELECT status, solicitante_id
+            SELECT status, solicitante_id, data_inicio, data_fim
             FROM reservas
             WHERE id = %s
             FOR UPDATE
@@ -447,7 +463,7 @@ class EmprestimoService:
         if reserva is None:
             raise ValueError("Reserva não encontrada.")
 
-        status, dono_id = reserva
+        status, dono_id, inicio, fim = reserva
 
         if status != "aprovada":
             raise ValueError(
@@ -459,6 +475,8 @@ class EmprestimoService:
             raise ValueError(
                 "O solicitante não corresponde ao da reserva."
             )
+
+        regras.validar_janela_retirada(inicio, fim)
 
         cursor.execute("""
             SELECT equipamento_id
