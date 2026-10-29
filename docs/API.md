@@ -210,6 +210,47 @@ entrar de novo.
 Erros (400): nova senha com menos de 8 caracteres; na troca comum,
 senha atual ausente ou incorreta, ou nova senha igual à atual.
 
+### `GET /auth/perfil` e `PUT /auth/perfil` — logado
+
+Tela **"Configuração do perfil"**. Cada pessoa vê e edita só a própria
+conta (o id vem do token).
+
+**GET** → **200**
+
+```json
+{
+  "perfil": {
+    "id": "3f6c1e2a-9b7d-4c1e-8a2f-0d9e5b7c4a11",
+    "nome": "Ana Beatriz Lima",
+    "email": "ana@escola.edu.br",
+    "papel": "aluno",
+    "solicitante_id": "8f38fcd1-2c4b-4e0a-9f1d-7a6b5c4d3e2f",
+    "telefone": "(77) 99999-0000",
+    "matricula": "2024001",
+    "setor": "Informática",
+    "editaveis": ["nome", "telefone"]
+  }
+}
+```
+
+`editaveis` diz quais campos a tela deve liberar: aluno e professor
+editam **nome e telefone**; admin e operador, só o **nome**.
+
+**PUT** — envie só o que mudou:
+
+```json
+{ "nome": "Ana Beatriz Lima", "telefone": "(77) 99999-0000" }
+```
+
+→ **200** `{ "mensagem": "Perfil atualizado com sucesso.", "perfil": {...} }`
+
+- `telefone` vazio (`""` ou `null`) apaga o telefone.
+- No aluno e no professor, o nome muda também no cadastro de
+  solicitante (aparece igual nos empréstimos).
+- **O e-mail não é editável** (é o login e o endereço da senha): 400.
+- Erros (400): nome vazio ou com mais de 120 caracteres, telefone
+  inválido, telefone em conta da equipe.
+
 ### `POST /auth/solicitar-acesso` — público
 
 Tela **"Solicitar acesso"** (alunos e professores). O endereço antigo

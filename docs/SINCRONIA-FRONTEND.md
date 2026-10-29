@@ -164,11 +164,12 @@ Devolver um item como `danificado` já abre a manutenção sozinho.
 
 ### 2.6 Perfil
 
-`ELO.salvarPerfil` lança erro no modo API porque o backend não tem rota
-de edição de perfil. Por enquanto: mostrar os dados só para leitura e
-usar `trocar-senha.html` para "Alterar minha senha" (a mesma rota serve
-para quem já tem senha). Se a edição do nome ou telefone for necessária,
-pedir a rota ao backend.
+A API tem `GET` e `PUT /api/auth/perfil` (seção 3 da API). A tela
+carrega o perfil, libera os campos de `editaveis` (nome; telefone para
+aluno e professor), mantém o e-mail só para leitura e salva com `PUT`.
+Depois de salvar, atualizar o `nome` guardado na sessão para o menu
+lateral mostrar o nome novo. "Alterar minha senha" continua em
+`trocar-senha.html`.
 
 ### 2.7 Pequenos ajustes
 

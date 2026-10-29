@@ -1,9 +1,11 @@
 from flask import Blueprint, g, jsonify, request
 
 from services.auth_service import AuthService
+from services.perfil_service import PerfilService
 from services.solicitacao_acesso_service import SolicitacaoAcessoService
 from services.auth_token import (
     gerar_token,
+    requer_autenticacao,
     requer_autenticacao_para_trocar_senha,
 )
 
@@ -109,3 +111,38 @@ def trocar_senha():
         return jsonify({"erro": str(erro)}), 400
 
     return jsonify({"mensagem": "Senha alterada com sucesso."}), 200
+
+
+@auth_bp.route("/perfil", methods=["GET"])
+@requer_autenticacao
+def obter_perfil():
+    perfil = PerfilService().obter(g.usuario["id"])
+
+    if perfil is None:
+        return jsonify({"erro": "Usuário não encontrado."}), 404
+
+    return jsonify({"perfil": perfil}), 200
+
+
+@auth_bp.route("/perfil", methods=["PUT"])
+@requer_autenticacao
+def atualizar_perfil():
+    dados = request.get_json(silent=True)
+
+    if not isinstance(dados, dict):
+        return jsonify({
+            "erro": "Envie os dados em formato JSON."
+        }), 400
+
+    try:
+        perfil = PerfilService().atualizar(g.usuario["id"], dados)
+    except ValueError as erro:
+        return jsonify({"erro": str(erro)}), 400
+
+    if perfil is None:
+        return jsonify({"erro": "Usuário não encontrado."}), 404
+
+    return jsonify({
+        "mensagem": "Perfil atualizado com sucesso.",
+        "perfil": perfil
+    }), 200
