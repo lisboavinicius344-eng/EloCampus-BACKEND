@@ -15,6 +15,7 @@ from routes.auth import auth_bp
 from routes.usuarios import usuarios_bp
 from routes.painel import painel_bp
 from routes.solicitacoes_acesso import solicitacoes_acesso_bp
+from routes.monitor import monitor_bp
 
 
 logging.basicConfig(
@@ -59,6 +60,7 @@ app.register_blueprint(historico_bp)
 app.register_blueprint(auth_bp)
 app.register_blueprint(usuarios_bp)
 app.register_blueprint(solicitacoes_acesso_bp)
+app.register_blueprint(monitor_bp)
 app.register_blueprint(painel_bp)
 
 

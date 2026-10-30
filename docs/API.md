@@ -948,4 +948,37 @@ curl https://elocampus-backend.a6ti6s.easypanel.host/api/health
 # {"sistema":"ELO Campus","status":"ok"}
 ```
 
+## 16. Monitoramento
+
+| Rota | O que confere | Resposta |
+|---|---|---|
+| `GET /api/health` | Só se a API responde (não toca no banco) | **200** `{"status":"ok"}` |
+| `GET /api/monitor` | API, conexão com o banco, as 11 tabelas, variáveis obrigatórias e o n8n (`/healthz`) | **200** `ok` ou `degradado`; **503** `falha` |
+
+`status` do `/api/monitor`:
+- `ok`: tudo funcionando;
+- `degradado`: o sistema funciona, mas o n8n não respondeu (e-mails não saem);
+- `falha`: banco, tabela ou configuração obrigatória com problema.
+
+```json
+{ "status": "ok", "sistema": "ELO Campus", "verificado_em": "2026-10-30T17:17:29+00:00" }
+```
+
+Com a chave do monitoramento (variável `MONITOR_TOKEN` no backend),
+enviada no cabeçalho `X-Monitor-Token` ou em `?token=`, a resposta traz
+também `verificacoes`, com o tempo e o erro de cada parte. Sem a chave,
+os detalhes internos não aparecem. Não é preciso login.
+
+**Saber o que falhou:**
+- `resumo` (em todas as respostas): uma linha com o que caiu, a falha
+  mais grave primeiro: `SISTEMA OK`, `FALHA: banco (ConnectionTimeout)`,
+  `FALHA: tabela reservas`, `DEGRADADO: n8n (ConnectionError)`. O tipo
+  do erro entre parênteses só aparece com a chave.
+- `?formato=texto`: devolve só essa linha, em texto puro, para o Uptime
+  Kuma copiar na mensagem do alerta (monitor de palavra-chave
+  `SISTEMA OK`, aceitando os códigos 200-299 e 503).
+- `GET /api/monitor/<parte>`, com `banco`, `tabelas`, `configuracao` ou
+  `n8n`: confere só aquela parte (200 ou 503). Com um monitor por parte,
+  o nome do monitor no alerta já diz o que caiu.
+
 Dúvidas ou rotas novas: falar com a equipe do backend.
