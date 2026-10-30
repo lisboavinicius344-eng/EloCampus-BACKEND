@@ -83,3 +83,18 @@ def test_servidor_pode_nao_ter_email_e_email_e_normalizado():
 def test_email_invalido_e_recusado():
     with pytest.raises(ValueError, match="e-mail válido"):
         Solicitante(nome="Ana", tipo="aluno", email="ana@")
+
+
+@pytest.mark.parametrize(
+    ("em_uso", "reservados", "novos", "permitido"),
+    [(0, 0, 3, True), (1, 1, 1, True), (2, 1, 1, False), (0, 0, 4, False)],
+)
+def test_limite_de_itens_por_pessoa(em_uso, reservados, novos, permitido):
+    cursor = MagicMock()
+    cursor.fetchone.return_value = (em_uso, reservados)
+
+    if permitido:
+        regras.verificar_limite_itens(cursor, "sol-1", novos)
+    else:
+        with pytest.raises(ValueError, match="até 3 equipamentos"):
+            regras.verificar_limite_itens(cursor, "sol-1", novos)

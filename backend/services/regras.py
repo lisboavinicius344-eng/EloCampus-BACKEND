@@ -18,6 +18,11 @@ ANTECEDENCIA_MAXIMA_RESERVA = timedelta(days=30)
 # 2 horas antes do início, até o fim do período reservado.
 ANTECEDENCIA_RETIRADA = timedelta(hours=2)
 
+# Cada pessoa pode ter no máximo 3 equipamentos ao mesmo tempo, somando
+# os que está usando (empréstimo em aberto) e os que reservou (reserva
+# pendente ou aprovada).
+LIMITE_ITENS_POR_PESSOA = 3
+
 # Uma reserva vira "expirada" quando o tempo passa sem ação da equipe:
 # pendente cujo início já passou, ou aprovada cujo fim já passou sem
 # retirada. É aplicado antes de ler ou alterar reservas.
@@ -35,6 +40,37 @@ def agora():
 
 def expirar_reservas(cursor):
     cursor.execute(SQL_EXPIRAR_RESERVAS)
+
+
+def verificar_limite_itens(cursor, solicitante_id, quantidade_nova):
+    """Recusa o pedido que passaria do limite de itens por pessoa.
+
+    Chame depois de expirar_reservas, para reservas vencidas não
+    contarem.
+    """
+    cursor.execute("""
+        SELECT
+            (SELECT COUNT(*)
+             FROM itens_emprestimo ie
+             JOIN emprestimos em ON em.id = ie.emprestimo_id
+             WHERE em.solicitante_id = %(id)s
+               AND em.status = 'em_andamento'
+               AND ie.data_devolucao IS NULL),
+            (SELECT COUNT(*)
+             FROM itens_reserva ir
+             JOIN reservas r ON r.id = ir.reserva_id
+             WHERE r.solicitante_id = %(id)s
+               AND r.status IN ('pendente', 'aprovada'))
+    """, {"id": solicitante_id})
+    em_uso, reservados = cursor.fetchone()
+
+    if em_uso + reservados + quantidade_nova > LIMITE_ITENS_POR_PESSOA:
+        raise ValueError(
+            f"Cada pessoa pode ter até {LIMITE_ITENS_POR_PESSOA} "
+            f"equipamentos ao mesmo tempo (emprestados e reservados). "
+            f"Esta pessoa já tem {em_uso} emprestado(s) e {reservados} "
+            f"reservado(s); este pedido inclui {quantidade_nova}."
+        )
 
 
 def verificar_pendencias(cursor, solicitante_id):

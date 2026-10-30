@@ -157,6 +157,14 @@ class EmprestimoService:
 
                     regras.verificar_pendencias(cursor, solicitante_id)
 
+                    # Na retirada de uma reserva, os itens já foram
+                    # contados quando ela foi feita.
+                    if reserva_id is None:
+                        regras.expirar_reservas(cursor)
+                        regras.verificar_limite_itens(
+                            cursor, solicitante_id, len(itens)
+                        )
+
                     cursor.execute("""
                         SELECT id
                         FROM usuarios

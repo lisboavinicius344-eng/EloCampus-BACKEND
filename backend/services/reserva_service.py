@@ -218,6 +218,7 @@ class ReservaService:
 
                 regras.verificar_pendencias(cursor, solicitante_id)
                 regras.expirar_reservas(cursor)
+                regras.verificar_limite_itens(cursor, solicitante_id, len(ids))
 
                 if responsavel_id is not None:
                     cursor.execute("""

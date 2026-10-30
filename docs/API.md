@@ -607,6 +607,10 @@ passa para `concluido`.
   15 dias**.
 - Quem tem **equipamento com devolução atrasada** não pega outro
   emprestado nem reserva (400), até a devolução.
+- **Limite:** cada pessoa tem no máximo **3 equipamentos ao mesmo
+  tempo**, somando os emprestados e os reservados (reservas pendentes
+  ou aprovadas). Acima disso, 400 com a contagem atual.
+  A retirada de uma reserva não conta de novo.
 - Todos os equipamentos precisam estar `disponivel` e não danificados.
 - A API recusa (400) equipamentos que **outra pessoa** tem reservados
   (reserva aprovada) dentro do período do empréstimo. A mensagem informa
@@ -733,6 +737,9 @@ Sugestão de tela: na lista de reservas aprovadas, um botão
 - **Limites:** começar no **futuro**, com no máximo **30 dias** de
   antecedência, e durar no máximo **7 dias**.
 - Quem tem **equipamento com devolução atrasada** não reserva (400).
+- **Limite:** cada pessoa tem no máximo **3 equipamentos ao mesmo
+  tempo**, somando os emprestados e os reservados (reservas pendentes
+  ou aprovadas). Acima disso, 400 com a contagem atual.
 - Equipamentos **emprestados** podem ser reservados, desde que a
   devolução prevista seja **antes** do início da reserva.
 - A API recusa (400):
