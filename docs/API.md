@@ -975,4 +975,45 @@ os detalhes internos não aparecem. Não é preciso login.
   `n8n`: confere só aquela parte (200 ou 503). Com um monitor por parte,
   o nome do monitor no alerta já diz o que caiu.
 
+## 16. Lembretes de devolução (automação do n8n)
+
+`POST /api/lembretes/processar`, chamado pelo n8n **de hora em hora**
+(workflow `n8n/lembretes-devolucao.json`). Exige a chave das automações
+no cabeçalho `X-Monitor-Token` (a mesma `MONITOR_TOKEN` do
+monitoramento); sem ela, 401.
+
+- **Véspera:** 24 h antes do prazo, uma vez, para empréstimos de mais
+  de 1 dia.
+- **Atraso:** a cada 24 h até a devolução, com cópia para quem
+  registrou o empréstimo.
+- Quem não tem e-mail no cadastro fica de fora. Cada lembrete é marcado
+  ao ser entregue: chamar de novo não repete.
+- `?simular=true` mostra o que seria enviado, sem marcar (para testes).
+
+**200**
+
+```json
+{
+  "total": 1,
+  "simulacao": false,
+  "lembretes": [
+    {
+      "tipo": "atraso",
+      "emprestimo_id": 5,
+      "para": "ana@escola.edu.br",
+      "copia": "operador@escola.edu.br",
+      "destinatarios": "ana@escola.edu.br, operador@escola.edu.br",
+      "itens_texto": "Notebook 3 (NB-3), Notebook 4 (NB-4)",
+      "data_prevista_formatada": "28/10/2026 às 18:00",
+      "dias_atraso": 2,
+      "assunto": "ELO Campus - devolução atrasada (há 2 dias)",
+      "mensagem_html": "<div>…</div>"
+    }
+  ]
+}
+```
+
+O n8n só envia: **To** = `destinatarios`, **Subject** = `assunto`,
+**Message (HTML)** = `mensagem_html`.
+
 Dúvidas ou rotas novas: falar com a equipe do backend.

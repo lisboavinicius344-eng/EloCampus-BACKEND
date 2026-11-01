@@ -1,0 +1,124 @@
+{
+  "name": "EloCampus - Lembretes de devolução",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -560,
+        0
+      ],
+      "id": "2f6d8a10-4b3c-4e5d-9f60-7a8b9c0d1e21",
+      "name": "A cada 1 hora"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://elocampus-backend.a6ti6s.easypanel.host/api/lembretes/processar",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Monitor-Token",
+              "value": "COLE_AQUI_O_MONITOR_TOKEN"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -340,
+        0
+      ],
+      "id": "3a7e9b21-5c4d-4f6e-8a71-8b9c0d1e2f32",
+      "name": "Buscar lembretes"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "lembretes",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        0
+      ],
+      "id": "4b8fac32-6d5e-4a7f-9b82-9c0d1e2f3a43",
+      "name": "Um por lembrete"
+    },
+    {
+      "parameters": {
+        "sendTo": "={{ $json.destinatarios }}",
+        "subject": "={{ $json.assunto }}",
+        "emailType": "html",
+        "message": "={{ $json.mensagem_html }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        100,
+        0
+      ],
+      "id": "5c90bd43-7e6f-4b80-8c93-0d1e2f3a4b54",
+      "name": "Enviar lembrete",
+      "webhookId": "6da1ce54-8f70-4c91-9da4-1e2f3a4b5c65"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "A cada 1 hora": {
+      "main": [
+        [
+          {
+            "node": "Buscar lembretes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar lembretes": {
+      "main": [
+        [
+          {
+            "node": "Um por lembrete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Um por lembrete": {
+      "main": [
+        [
+          {
+            "node": "Enviar lembrete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}

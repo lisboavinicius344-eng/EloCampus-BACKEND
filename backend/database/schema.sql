@@ -306,6 +306,8 @@ CREATE TABLE emprestimos (
     status                   VARCHAR(30) NOT NULL DEFAULT 'em_andamento',
     observacoes              TEXT,
     criado_em                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    lembrete_vespera_em      TIMESTAMPTZ,
+    lembrete_atraso_em       TIMESTAMPTZ,
 
     CONSTRAINT emprestimos_status_valido
         CHECK (status IN ('em_andamento', 'concluido', 'cancelado')),
@@ -323,6 +325,10 @@ COMMENT ON COLUMN emprestimos.usuario_responsavel_id IS
     'Usuário (operador/admin) que registrou o empréstimo.';
 COMMENT ON COLUMN emprestimos.status IS
     'em_andamento | concluido | cancelado. Passa a concluido quando todos os itens são devolvidos.';
+COMMENT ON COLUMN emprestimos.lembrete_vespera_em IS
+    'Quando o lembrete de véspera (24 h antes do prazo) foi entregue ao n8n. Evita enviar duas vezes.';
+COMMENT ON COLUMN emprestimos.lembrete_atraso_em IS
+    'Último aviso de atraso entregue ao n8n. O aviso se repete a cada 24 h até a devolução.';
 
 
 -- =====================================================================
