@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 
 from database.conexao import Conexao
 from services import identificadores
+from services.historico_service import registrar as registrar_historico
 from services.n8n_service import notificar_manutencao
 
 
@@ -38,6 +39,9 @@ def abrir_automatica(cursor, equipamento_id, usuario_id, descricao,
             )
             VALUES (%s, %s, %s, 'aberta', %s)
         """, (equipamento_id, usuario_id, descricao, observacoes))
+        registrar_historico(
+            cursor, equipamento_id, usuario_id, "manutencao", descricao
+        )
 
     cursor.execute("""
         UPDATE equipamentos
@@ -209,6 +213,11 @@ class ManutencaoService:
 
                 manutencao_id = cursor.fetchone()[0]
 
+                registrar_historico(
+                    cursor, equipamento_id, responsavel_id, "manutencao",
+                    f"Manutenção aberta: {descricao.strip()}"
+                )
+
                 cursor.execute("""
                     UPDATE equipamentos
                     SET status = 'manutencao'
@@ -223,7 +232,7 @@ class ManutencaoService:
 
         return manutencao_criada
 
-    def finalizar(self, manutencao_id, dados):
+    def finalizar(self, manutencao_id, dados, usuario_id=None):
         solucao = dados.get("solucao")
         observacoes = dados.get("observacoes")
         # Sem o campo, o equipamento volta como "bom".
@@ -295,6 +304,12 @@ class ManutencaoService:
                     WHERE id = %s
                       AND status = 'manutencao'
                 """, (estado_final, equipamento_id))
+
+                registrar_historico(
+                    cursor, equipamento_id, usuario_id, "manutencao_concluida",
+                    f"Manutenção concluída: {solucao.strip()} "
+                    f"(estado: {estado_final})."
+                )
 
         manutencao_finalizada = self.obter_por_id(manutencao_id)
         self._notificar_com_seguranca(

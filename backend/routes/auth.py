@@ -1,5 +1,6 @@
 from flask import Blueprint, g, jsonify, request
 
+from services import limite_tentativas as limites
 from services.auth_service import AuthService
 from services.perfil_service import PerfilService
 from services.solicitacao_acesso_service import SolicitacaoAcessoService
@@ -16,6 +17,12 @@ auth_bp = Blueprint(
 )
 
 
+def _muitas_tentativas(segundos):
+    resposta = jsonify({"erro": limites.mensagem_de_espera(segundos)})
+    resposta.headers["Retry-After"] = str(segundos)
+    return resposta, 429
+
+
 @auth_bp.route("/login", methods=["POST"])
 def login():
     dados = request.get_json(silent=True)
@@ -25,10 +32,26 @@ def login():
             "erro": "Envie os dados em formato JSON."
         }), 400
 
+    # Contra quem tenta muitas senhas: por conta e por endereço.
+    email = str(dados.get("email") or "").strip().lower()
+    ip = limites.ip_do_cliente()
+    espera = max(
+        limites.LOGIN_POR_EMAIL.espera(email) if email else 0,
+        limites.LOGIN_POR_IP.espera(ip),
+    )
+
+    if espera:
+        return _muitas_tentativas(espera)
+
     try:
         usuario = AuthService.login(dados)
     except ValueError as erro:
+        if email:
+            limites.LOGIN_POR_EMAIL.registrar(email)
+        limites.LOGIN_POR_IP.registrar(ip)
         return jsonify({"erro": str(erro)}), 401
+
+    limites.LOGIN_POR_EMAIL.zerar(email)
 
     mensagem = (
         "Crie sua nova senha para continuar."
@@ -54,10 +77,19 @@ def solicitar_acesso():
             "erro": "Envie os dados em formato JSON."
         }), 400
 
+    ip = limites.ip_do_cliente()
+    espera = limites.SOLICITAR_ACESSO_POR_IP.espera(ip)
+
+    if espera:
+        return _muitas_tentativas(espera)
+
     try:
         SolicitacaoAcessoService().solicitar(dados)
     except ValueError as erro:
         return jsonify({"erro": str(erro)}), 400
+
+    # Só os pedidos aceitos contam: um erro de digitação não gasta a vez.
+    limites.SOLICITAR_ACESSO_POR_IP.registrar(ip)
 
     # A mesma resposta em todos os casos (pedido novo, pedido repetido ou
     # e-mail que já tem conta): a tela não revela quem tem acesso.
@@ -79,10 +111,18 @@ def esqueci_senha():
             "erro": "Envie os dados em formato JSON."
         }), 400
 
+    ip = limites.ip_do_cliente()
+    espera = limites.ESQUECI_SENHA_POR_IP.espera(ip)
+
+    if espera:
+        return _muitas_tentativas(espera)
+
     try:
         AuthService.esqueci_senha(dados)
     except ValueError as erro:
         return jsonify({"erro": str(erro)}), 400
+
+    limites.ESQUECI_SENHA_POR_IP.registrar(ip)
 
     # A mesma resposta para e-mails cadastrados ou não: assim a tela não
     # serve para descobrir quem tem conta no sistema.

@@ -1,4 +1,4 @@
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, g, jsonify, request
 from services.equipamento_service import EquipamentoService
 from services.auth_token import requer_autenticacao, requer_papeis
 
@@ -106,7 +106,9 @@ def atualizar_equipamento(equipamento_id):
 @requer_papeis("admin", "operador")
 def inativar_equipamento(equipamento_id):
     try:
-        equipamento = equipamento_service.inativar(equipamento_id)
+        equipamento = equipamento_service.inativar(
+            equipamento_id, g.usuario["id"]
+        )
 
         if equipamento is None:
             return jsonify({

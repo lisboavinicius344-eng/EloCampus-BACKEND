@@ -4,6 +4,22 @@ from database.conexao import Conexao
 from services import identificadores
 
 
+def registrar(cursor, equipamento_id, usuario_id, tipo, descricao,
+              emprestimo_id=None):
+    """Grava uma movimentação dentro da transação de quem chama.
+
+    Tipos gravados automaticamente: emprestimo, devolucao, manutencao,
+    manutencao_concluida, manutencao_cancelada, baixa.
+    """
+    cursor.execute("""
+        INSERT INTO historico_movimentacoes (
+            equipamento_id, usuario_id, emprestimo_id,
+            tipo_movimentacao, descricao
+        )
+        VALUES (%s, %s, %s, %s, %s)
+    """, (equipamento_id, usuario_id, emprestimo_id, tipo, descricao))
+
+
 class HistoricoService:
 
     def listar(self):

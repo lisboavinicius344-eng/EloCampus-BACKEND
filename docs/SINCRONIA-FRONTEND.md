@@ -1,48 +1,37 @@
 # Sincronia entre frontend e backend do ELO Campus
 
-Levantamento de 26/10/2026, comparando o frontend publicado
+Situação em **30/10/2026**, comparando o frontend publicado
 (`elocampus-frontend.a6ti6s.easypanel.host`) com o backend da `main`.
 Detalhes de cada rota (corpos, respostas e erros) estão em
 [API.md](API.md).
 
-**Resumo:** login, primeiro acesso, painel, QR Code, equipamentos,
-empréstimos (equipe) e a tela de equipe já falam com a API. O que falta
-é sobretudo **tela**: as rotas de solicitantes, categorias, reservas e
-manutenções já existem no backend e várias já estão no `api.js`, mas
-nenhuma página as usa. Há ainda **dois fluxos do aluno que chamam rotas
-da equipe** e recebem 403.
+**Resumo:** o front já usa a API em todas as telas. Falta só o **envio
+da foto do equipamento** e dois ajustes pequenos (seção 1).
 
 ---
 
 ## 1. Situação atual, por área
 
-| Área | Situação no front | O que falta |
-|---|---|---|
-| Login e sessão | ✅ Integrado | — |
-| Primeiro acesso (`trocar-senha.html`) | ✅ Integrado, inclusive o redirecionamento no 403 | — |
-| Esqueci minha senha (`recuperar-senha.html`) | ✅ Integrado (`POST /auth/esqueci-senha`) | — |
-| Autocadastro (`cadastro.html`) | ✅ Integrado | Depende de existir solicitante (ver 2.1) |
-| Painel (`dashboard.html`) | ✅ Resumo vem da API | — |
-| Consulta por QR Code | ✅ Integrado | — |
-| Equipamentos: listar, ver | ✅ Integrado | — |
-| Equipamentos: cadastrar, editar | ⚠️ Integrado, mas falha sem categoria cadastrada | Tela de categorias + campo de elegibilidade (ver 2.3) |
-| Equipamentos: retirar de uso | ❌ Só no navegador (mensagem "salvo localmente") | Chamar `PATCH /equipamentos/<id>/inativar` |
-| Empréstimos (equipe) | ⚠️ Integrado, mas escolhe o solicitante pelo **nome** | Escolher pelo `id` (ver 2.1) |
-| Devoluções (equipe) | ✅ Integrado | — |
-| Histórico de movimentações | ✅ Integrado | — |
-| Equipe do sistema (`usuarios.html`) | ✅ Listar, criar, reenviar senha | Botão "Desativar" |
-| **Solicitantes** | ❌ Não existe tela no modo API | Tela completa (ver 2.1) |
-| **Categorias** | ❌ Não existe tela | Tela completa (ver 2.3) |
-| **Reservas** | ❌ Funções no `api.js`, sem tela | Telas do aluno e da equipe (ver 2.2) |
-| **Manutenções** | ❌ Funções no `api.js`, sem tela | Tela da equipe (ver 2.4) |
-| Aluno: "Pedir empréstimo" | ❌ Chama `POST /emprestimos` (só equipe) → **403** | Virar reserva (ver 2.2) |
-| Aluno: "Devolver equipamentos" | ❌ Chama a devolução (só equipe) → **403** | Tirar do menu do aluno (ver 2.5) |
-| Perfil: salvar alterações | ❌ Sem rota no backend | Esconder o botão ou pedir a rota (ver 2.6) |
-| Relatórios, Servidor (menu do admin) | ❌ Páginas não existem (404) | Esconder do menu por enquanto |
+| Área | Situação no front |
+|---|---|
+| Login, "Criar sua senha", "Esqueci minha senha" | ✅ Integrado (inclui a senha atual ao alterar a senha) |
+| Solicitar acesso e aprovação pelo admin | ✅ Integrado |
+| Perfil (nome e telefone) | ✅ Integrado |
+| Painel e consulta por QR Code | ✅ Integrado |
+| Equipamentos: listar, cadastrar, editar, baixa, elegibilidade | ✅ Integrado |
+| **Equipamentos: foto** | ❌ **O campo de foto saiu do formulário**: o site mostra fotos, mas não envia (ver 2.8) |
+| Categorias, solicitantes, reservas, manutenções | ✅ Integrado |
+| Empréstimos e devoluções (equipe) | ✅ Integrado |
+| Equipe do sistema e histórico | ✅ Integrado |
+| **Histórico: tipos novos** | ⚠️ Dar rótulos a `manutencao`, `manutencao_concluida`, `manutencao_cancelada` e `baixa` (API, seção 12) |
+| **Erro 429 (muitas tentativas)** | ⚠️ Conferir que a mensagem de `erro` aparece no login, no "Esqueci minha senha" e no "Solicitar acesso" |
 
 ---
 
-## 2. Mudanças prioritárias no front
+## 2. Mudanças pedidas ao front (registro)
+
+As seções abaixo são o registro do que foi pedido ao longo da
+integração; quase tudo já foi feito (ver seção 1).
 
 ### 2.1 Tela de Solicitantes (urgente)
 
@@ -310,16 +299,16 @@ manutenção.
 
 ## 4. Fluxos principais
 
-### Do cadastro ao primeiro acesso
+### Do pedido de acesso ao primeiro login
 
-1. A equipe cadastra a pessoa em **Solicitantes** e passa o código (`id`).
-2. A pessoa abre **Cadastro**, informa nome, e-mail e código.
-3. Chega por e-mail uma senha provisória, válida por 24 horas.
-4. No login, a API devolve `deve_trocar_senha: true` e o front leva para
-   **Criar sua senha**.
-5. Depois da troca, o mesmo token passa a valer em todas as telas.
+1. A pessoa abre **Solicitar acesso** e informa nome e e-mail.
+2. O admin aprova em **Solicitações de acesso**; a conta é criada e a
+   senha provisória vai por e-mail, sozinha.
+3. A senha provisória vale **um único acesso**: no login, a API devolve
+   `deve_trocar_senha: true` e o front leva para **Criar sua senha**.
+4. Depois da troca, o mesmo token passa a valer em todas as telas.
 
-Contas da equipe pulam os passos 1 e 2: o admin cria em **Equipe**.
+Contas da equipe: o admin cria em **Equipe** (a partir do passo 3).
 
 ### Da reserva à devolução
 
@@ -333,7 +322,7 @@ Aluno reserva ──► pendente ──► Equipe aprova ──► aprovada ─�
                                                                          │
                                           ┌──────────────────────────────┴──────┐
                                     bom/regular                              danificado
-                                 item disponível                    item vai para manutenção
+                                 item disponível          manutenção aberta automaticamente
 ```
 
 A equipe também pode registrar um empréstimo direto no balcão, sem
@@ -350,6 +339,8 @@ reserva (**Novo empréstimo**).
   Basta exibir `erro`; não é preciso traduzir.
 - **403 com `codigo: "TROCA_DE_SENHA_OBRIGATORIA"`**: já tratado no
   `requisitar`.
+- **429**: muitas tentativas seguidas (login, "Esqueci minha senha",
+  "Solicitar acesso"). O `erro` já diz quanto tempo esperar.
 - **403 sem código**: a conta não tem permissão para aquela ação. Se
   aparecer, a tela está chamando uma rota que não é do perfil (como nos
   itens 2.2 e 2.5).
@@ -365,17 +356,10 @@ reserva (**Novo empréstimo**).
 
 ---
 
-## 6. Ordem de entrega sugerida
+## 6. O que falta no front
 
-- [ ] Tela de Solicitantes, com o código em destaque (2.1)
-- [ ] Novo empréstimo da equipe escolhendo o solicitante por `id` (2.1)
-- [ ] Categorias e lista de categorias no formulário de equipamento (2.3)
-- [ ] Campo "Quem pode usar" (`elegibilidade`) no equipamento (2.3)
-- [ ] "Retirar de uso" chamando a API (2.3)
-- [ ] Aluno: "Pedir empréstimo" vira "Reservar equipamento" + "Minhas reservas" (2.2)
-- [ ] Aluno: tirar "Devolver equipamentos" do menu (2.5)
-- [ ] Equipe: tela de Reservas com aprovar, rejeitar e registrar retirada (2.2)
-- [ ] Equipe: tela de Manutenções (2.4)
-- [ ] Equipe: botão Desativar usuário (2.7)
-- [ ] Perfil só leitura + link para alterar senha (2.6)
-- [ ] Esconder Relatórios e Servidor; `runtime-config.js` sem cache (2.7)
+- [ ] Recolocar o campo de **foto** no cadastro de equipamento (2.8)
+- [ ] Rótulos no **histórico** para `manutencao`, `manutencao_concluida`,
+      `manutencao_cancelada` e `baixa`
+- [ ] Conferir a mensagem do erro **429** nas telas de login, "Esqueci
+      minha senha" e "Solicitar acesso"

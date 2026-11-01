@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from services.auth_token import requer_papeis
 from services.historico_service import HistoricoService
@@ -37,6 +37,9 @@ def cadastrar():
 
     if not isinstance(dados, dict):
         return jsonify({"erro": "Envie um objeto JSON válido."}), 400
+
+    # A movimentação é sempre de quem está logado.
+    dados["usuario_id"] = g.usuario["id"]
 
     try:
         registro = historico_service.cadastrar(dados)

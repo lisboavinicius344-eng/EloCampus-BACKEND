@@ -1,8 +1,7 @@
 # ELO Campus — Documentação da API para o frontend
 
-Este documento descreve tudo o que o frontend precisa para trocar o modo
-de demonstração pela API real: endereço, login, permissões, todas as
-rotas com campos e exemplos, e o que muda em relação ao `api.js` atual.
+Este documento descreve a API do ELO Campus para o frontend: endereço,
+login, permissões e todas as rotas, com campos e exemplos.
 
 ---
 
@@ -78,12 +77,8 @@ Todos os erros vêm em JSON, sempre no campo **`erro`**:
 | `401` | Sem login, token inválido ou **expirado** | Voltar para a tela de login |
 | `403` | Usuário logado, mas sem permissão | Mostrar o texto de `erro` |
 | `404` | Registro ou rota não encontrada | Mostrar o texto de `erro` |
+| `429` | Muitas tentativas seguidas (login, "Esqueci minha senha", "Solicitar acesso") | Mostrar o texto de `erro`, que diz quanto esperar (o cabeçalho `Retry-After` traz os segundos) |
 | `500` | Erro interno | Mensagem genérica ("tente novamente") |
-
-> ⚠️ **Ajuste necessário no `api.js`:** hoje a função `requisitar` só lê
-> a mensagem nos status 409/422 e no campo `mensagem`. Ela precisa ler o
-> campo **`erro`** e tratar o status **400**, senão o usuário só verá
-> "O servidor não conseguiu atender à solicitação".
 
 ---
 
@@ -144,6 +139,11 @@ e vá para a tela de criação de senha.
 
 - `{ "erro": "E-mail ou senha inválidos." }`
 - `{ "erro": "Sua senha provisória expirou. Use \"Esqueci minha senha\" para receber uma nova." }`
+
+**429** depois de **5 senhas erradas na mesma conta** (ou 20 a partir do
+mesmo endereço) em 15 minutos: `{ "erro": "Muitas tentativas. Aguarde 15
+minutos e tente novamente." }`. Enquanto durar o bloqueio, nem a senha
+certa entra. Um login certo zera a contagem da conta.
 
 > ⚠️ O login responde **401** quando a senha está errada. Como o
 > `requisitar` atual redireciona para o login em qualquer 401, faça a
@@ -323,8 +323,7 @@ responde 400 com a explicação.
 
 ### `GET /dashboard/resumo` — qualquer usuário logado
 
-Devolve os números diretamente (sem embrulho), no mesmo formato do
-`demoResumo`:
+Devolve os números diretamente (sem embrulho):
 
 ```json
 {
@@ -406,7 +405,7 @@ a tela funciona sem alterações.
 |---|---|
 | `estado_conservacao` | `novo`, `bom`, `regular`, `danificado` (condição física) |
 | `status` | `disponivel`, `emprestado`, `manutencao`, `baixado` (definido pelo backend) |
-| `situacao` | `disponivel`, `emprestado`, `atrasado`, `manutencao`, `inativo` (para exibir; igual ao modo demo) |
+| `situacao` | `disponivel`, `emprestado`, `atrasado`, `manutencao`, `inativo` (para exibir) |
 | `elegibilidade` | `todos`, `somente_funcionarios` |
 
 ### Rotas
@@ -476,6 +475,13 @@ a imagem em cache sem mostrar a antiga.
 
 > **Não existe `DELETE`.** Equipamentos nunca são apagados, para
 > preservar o histórico: use `PATCH /equipamentos/<id>/inativar`.
+
+**Baixa (`PATCH /equipamentos/<id>/inativar`):**
+- recusada (400) para equipamento **emprestado** ou que esteja em
+  **reserva pendente ou aprovada** (a mensagem lista as reservas, para
+  cancelar ou rejeitar antes);
+- se houver **manutenção aberta**, ela é **cancelada** junto;
+- a baixa e o cancelamento vão para o histórico.
 
 ---
 
@@ -627,11 +633,8 @@ volta `novo`). Devolvido `danificado`, o equipamento vai para manutenção
 e **a manutenção é aberta automaticamente**, com as observações da
 devolução; ela aparece em `GET /manutencoes`.
 
-> **Diferença para o `api.js` atual:** o demo usa `POST /devolucoes`
-> com vários itens de uma vez. Na API, chame a rota de devolução **uma
-> vez para cada item**. Os campos `condicao`, `acessoriosConferidos`,
-> `equipamentoConferido` e `assinaturaRecebida` do demo não existem na
-> API — se forem necessários, inclua as informações em `observacoes`.
+A devolução é **um item por chamada**. Informações de conferência
+(acessórios, assinatura) vão em `observacoes`.
 
 ---
 
@@ -820,9 +823,61 @@ Sugestão de tela: na lista de reservas aprovadas, um botão
 |---|---|
 | `GET /historico` | Lista, mais recentes primeiro |
 | `GET /historico/<id>` | Um registro |
-| `POST /historico` | `{ "equipamento_id", "tipo_movimentacao", "usuario_id"?, "emprestimo_id"?, "descricao"? }` → **201** |
+| `POST /historico` | `{ "equipamento_id", "tipo_movimentacao", "emprestimo_id"?, "descricao"? }` → **201** |
 
-O backend registra sozinho os tipos `emprestimo` e `devolucao`.
+- O usuário do registro é sempre **quem está logado** (`usuario_id`
+  enviado no corpo é ignorado). O mesmo vale para o responsável de
+  empréstimos, devoluções, manutenções e reservas feitas pela equipe.
+- O backend registra sozinho estes tipos:
+
+| `tipo_movimentacao` | Quando |
+|---|---|
+| `emprestimo` | Empréstimo ou retirada de reserva |
+| `devolucao` | Devolução de um item |
+| `manutencao` | Manutenção aberta (manual ou automática, ao devolver ou cadastrar danificado) |
+| `manutencao_concluida` | Manutenção finalizada (a descrição traz a solução e o estado final) |
+| `manutencao_cancelada` | Manutenção cancelada pela baixa |
+| `baixa` | Equipamento retirado do patrimônio |
+
+---
+
+## 13. Gestão da equipe (somente admin)
+
+Objeto: `{ "id", "nome", "email", "papel", "ativo", "solicitante_id", "criado_em", "deve_trocar_senha" }`
+
+`deve_trocar_senha: true` indica quem ainda não fez o primeiro acesso.
+
+| Método e rota | Corpo / resposta |
+|---|---|
+| `GET /usuarios` | `{ "usuarios": [...] }` (todas as contas) |
+| `GET /usuarios/<id>` | `{ "usuario": {...} }` |
+| `POST /usuarios` | `{ "nome", "email", "papel": "admin" \| "operador" }` → **201** |
+| `PATCH /usuarios/<id>/reenviar-senha` | Gera e envia uma **nova senha provisória** (24 h). Recusado (400) na própria conta |
+| `PATCH /usuarios/<id>/desativar` | Não permite desativar a própria conta nem o último administrador |
+
+O admin **não define a senha**: a pessoa recebe a senha provisória por
+e-mail e cria a própria no primeiro acesso.
+
+Resposta de `POST /usuarios` e `reenviar-senha`:
+
+```json
+{
+  "mensagem": "Usuário cadastrado. A senha provisória foi enviada por e-mail.",
+  "email_enviado": true,
+  "usuario": { "...": "objeto usuário" }
+}
+```
+
+Se o e-mail falhar (`"email_enviado": false`), a resposta inclui
+`"senha_provisoria"` para o admin **repassar pessoalmente** — mostre-a
+uma única vez, com destaque.
+
+Use **reenviar-senha** quando a senha provisória expirar, o e-mail não
+chegar ou alguém esquecer a senha: a senha anterior deixa de valer e a
+pessoa precisará criar uma nova no próximo acesso. Na **própria conta**
+o reenvio é recusado: ele trancaria o admin para fora até abrir o
+e-mail. Para a própria senha, use "Alterar senha" ou "Esqueci minha
+senha".
 
 ---
 
@@ -880,82 +935,14 @@ de novo.
 
 ---
 
-## 13. Gestão da equipe (somente admin — tela a ser criada)
-
-Objeto: `{ "id", "nome", "email", "papel", "ativo", "solicitante_id", "criado_em", "deve_trocar_senha" }`
-
-`deve_trocar_senha: true` indica quem ainda não fez o primeiro acesso.
-
-| Método e rota | Corpo / resposta |
-|---|---|
-| `GET /usuarios` | `{ "usuarios": [...] }` (todas as contas) |
-| `GET /usuarios/<id>` | `{ "usuario": {...} }` |
-| `POST /usuarios` | `{ "nome", "email", "papel": "admin" \| "operador" }` → **201** |
-| `PATCH /usuarios/<id>/reenviar-senha` | Gera e envia uma **nova senha provisória** (24 h) |
-| `PATCH /usuarios/<id>/desativar` | Não permite desativar a própria conta nem o último administrador |
-
-O admin **não define a senha**: a pessoa recebe a senha provisória por
-e-mail e cria a própria no primeiro acesso.
-
-Resposta de `POST /usuarios` e `reenviar-senha`:
-
-```json
-{
-  "mensagem": "Usuário cadastrado. A senha provisória foi enviada por e-mail.",
-  "email_enviado": true,
-  "usuario": { "...": "objeto usuário" }
-}
-```
-
-Se o e-mail falhar (`"email_enviado": false`), a resposta inclui
-`"senha_provisoria"` para o admin **repassar pessoalmente** — mostre-a
-uma única vez, com destaque.
-
-Use **reenviar-senha** quando a senha provisória expirar, o e-mail não
-chegar ou alguém esquecer a senha: a senha anterior deixa de valer e a
-pessoa precisará criar uma nova no próximo acesso.
-
----
-
-## 14. De → para: `api.js` atual
-
-| Função no `api.js` | Hoje chama | Na API |
-|---|---|---|
-| `resumoDashboard` | `/dashboard/resumo` | ✅ igual |
-| `equipamentos` | `/equipamentos` | ✅ igual (ler `.equipamentos`) |
-| `equipamento(id)` | `/equipamentos/<id>` | ✅ igual (ler `.equipamento`) |
-| `consultaQr` | `/consulta-qr/<codigo>` | ✅ igual |
-| `emprestimos` | `/emprestimos` | ✅ igual (ler `.emprestimos`; campos diferentes, ver seção 9) |
-| `registrarEmprestimo` | `POST /emprestimos` | ✅ igual — enviar `solicitante_id`, `equipamentos`, `data_prevista_devolucao` |
-| `movimentacoes` | `/movimentacoes` | ⚠️ **`/historico`** |
-| `registrarDevolucao` | `POST /devolucoes` | ⚠️ **`PATCH /emprestimos/<id>/itens/<equipamento_id>/devolver`**, um por item |
-| `salvarEquipamento` | `POST`/`PUT /equipamentos` | ✅ igual — campos da seção 6 |
-| `removerEquipamento` | `DELETE /equipamentos/<id>` | ⚠️ **`PATCH /equipamentos/<id>/inativar`** |
-| `perfil` / `salvarPerfil` | `/perfil` | ❌ não existe — usar o `usuario` devolvido pelo login |
-| `autenticar` (auth.js) | contas fixas | ⚠️ **`POST /auth/login`** com `email` e `senha` |
-| — | — | 🆕 tela **"Criar sua senha"** → `POST /auth/trocar-senha` (seção 3) |
-
-**Nomes de campos que mudam** (demo → API):
-
-| Demo | API |
-|---|---|
-| `patrimonio` | `numero_patrimonio` (na consulta QR vêm os dois) |
-| `condicao` (`"Bom"`) | `estado_conservacao` (`"bom"`) |
-| `categoria` (texto, ao salvar) | `categoria_id` (número) — listar com `GET /categorias` |
-| `retirada` / `prevista` / `devolvida` | `data_emprestimo` / `data_prevista_devolucao` / `itens[].data_devolucao` |
-| `perfil: "administrador"` | `papel: "admin"` |
-| `login` (usuário/matrícula) | `email` |
-
----
-
-## 15. Teste rápido
+## 14. Teste rápido
 
 ```bash
 curl https://elocampus-backend.a6ti6s.easypanel.host/api/health
 # {"sistema":"ELO Campus","status":"ok"}
 ```
 
-## 16. Monitoramento
+## 15. Monitoramento
 
 | Rota | O que confere | Resposta |
 |---|---|---|

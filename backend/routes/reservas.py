@@ -86,6 +86,9 @@ def cadastrar_reserva():
 
         # A reserva do aluno não recebe um responsável escolhido pelo cliente.
         dados["usuario_responsavel_id"] = None
+    else:
+        # Reserva feita pela equipe: o responsável é quem está logado.
+        dados["usuario_responsavel_id"] = usuario["id"]
 
     try:
         reserva = reserva_service.cadastrar(dados)

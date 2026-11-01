@@ -405,15 +405,6 @@ class EmprestimoService:
                     equipamento_id,
                 ))
 
-                if estado_na_devolucao == "danificado":
-                    abrir_automatica(
-                        cursor,
-                        equipamento_id,
-                        usuario_id,
-                        f"Devolvido danificado (empréstimo #{emprestimo_id}).",
-                        observacoes,
-                    )
-
                 cursor.execute("""
                     INSERT INTO historico_movimentacoes (
                         equipamento_id,
@@ -430,6 +421,16 @@ class EmprestimoService:
                     "devolucao",
                     "Equipamento devolvido.",
                 ))
+
+                # Depois da devolução, para o histórico ficar em ordem.
+                if estado_na_devolucao == "danificado":
+                    abrir_automatica(
+                        cursor,
+                        equipamento_id,
+                        usuario_id,
+                        f"Devolvido danificado (empréstimo #{emprestimo_id}).",
+                        observacoes,
+                    )
 
                 cursor.execute("""
                     SELECT COUNT(*)

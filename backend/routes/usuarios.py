@@ -51,6 +51,14 @@ def cadastrar_usuario():
 @usuarios_bp.route("/<uuid:usuario_id>/reenviar-senha", methods=["PATCH"])
 @requer_papeis("admin")
 def reenviar_senha(usuario_id):
+    # Reenviar troca a senha na hora: na própria conta, o admin ficaria
+    # trancado para fora até abrir o e-mail.
+    if str(usuario_id) == g.usuario["id"]:
+        return jsonify({
+            "erro": "Para a sua própria senha, use \"Alterar senha\" no "
+                    "perfil ou \"Esqueci minha senha\" na tela de login."
+        }), 400
+
     resultado = usuario_service.reenviar_senha(usuario_id)
 
     if resultado is None:

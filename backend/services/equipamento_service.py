@@ -4,7 +4,8 @@ import psycopg
 
 from database.conexao import Conexao
 from models.equipamento import Equipamento
-from services import imagem_equipamento
+from services import imagem_equipamento, regras
+from services.historico_service import registrar as registrar_historico
 from services.manutencao_service import abrir_automatica
 from services.painel_service import SITUACAO_SQL
 from services.n8n_service import notificar_equipamento
@@ -286,7 +287,12 @@ class EquipamentoService:
 
         return equipamento_atualizado
 
-    def inativar(self, equipamento_id):
+    def inativar(self, equipamento_id, usuario_id=None):
+        """Dá baixa no equipamento (retira do patrimônio; estado final).
+
+        Recusa equipamento emprestado ou com reserva ativa. A manutenção
+        aberta é cancelada, e tudo vai para o histórico.
+        """
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
                 cursor.execute("""
@@ -309,11 +315,54 @@ class EquipamentoService:
                 if registro[0] == "baixado":
                     raise ValueError("O equipamento já está baixado.")
 
+                regras.expirar_reservas(cursor)
+                cursor.execute("""
+                    SELECT r.id
+                    FROM reservas r
+                    JOIN itens_reserva ir ON ir.reserva_id = r.id
+                    WHERE ir.equipamento_id = %s
+                      AND r.status IN ('pendente', 'aprovada')
+                    ORDER BY r.id
+                """, (equipamento_id,))
+                reservas = [r[0] for r in cursor.fetchall()]
+
+                if reservas:
+                    raise ValueError(
+                        "O equipamento está em reservas ativas "
+                        f"({', '.join(f'#{r}' for r in reservas)}). "
+                        "Cancele ou rejeite essas reservas antes da baixa."
+                    )
+
+                cursor.execute("""
+                    UPDATE manutencoes
+                    SET status = 'cancelada',
+                        data_conclusao = NOW(),
+                        observacoes = CONCAT_WS(
+                            ' ', observacoes,
+                            'Cancelada pela baixa do equipamento.'
+                        )
+                    WHERE equipamento_id = %s
+                      AND status IN ('aberta', 'em_andamento')
+                    RETURNING id
+                """, (equipamento_id,))
+
+                if cursor.fetchone() is not None:
+                    registrar_historico(
+                        cursor, equipamento_id, usuario_id,
+                        "manutencao_cancelada",
+                        "Manutenção cancelada pela baixa do equipamento.",
+                    )
+
                 cursor.execute("""
                     UPDATE equipamentos
                     SET status = 'baixado'
                     WHERE id = %s
                 """, (equipamento_id,))
+
+                registrar_historico(
+                    cursor, equipamento_id, usuario_id, "baixa",
+                    "Equipamento retirado do patrimônio (baixa).",
+                )
 
         equipamento_baixado = self.obter_por_id(equipamento_id)
         self._notificar_com_seguranca(

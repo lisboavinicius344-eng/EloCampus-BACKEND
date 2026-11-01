@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, g, jsonify, request
 
 from services.auth_token import requer_papeis
 from services.manutencao_service import ManutencaoService
@@ -46,6 +46,9 @@ def cadastrar_manutencao():
             "erro": "Envie os dados em formato JSON."
         }), 400
 
+    # Quem abre a manutenção é o usuário logado, nunca o corpo enviado.
+    dados["usuario_responsavel_id"] = g.usuario["id"]
+
     try:
         manutencao = manutencao_service.cadastrar(dados)
 
@@ -74,7 +77,8 @@ def finalizar_manutencao(manutencao_id):
     try:
         manutencao = manutencao_service.finalizar(
             manutencao_id,
-            dados
+            dados,
+            g.usuario["id"]
         )
 
         if manutencao is None:
