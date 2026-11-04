@@ -16,7 +16,15 @@ historico_service = HistoricoService()
 @historico_bp.route("/", methods=["GET"])
 @requer_papeis("admin", "operador")
 def listar():
-    return jsonify(historico_service.listar()), 200
+    valor = request.args.get("equipamento_id")
+
+    if valor is None:
+        return jsonify(historico_service.listar()), 200
+
+    if not valor.isdecimal() or int(valor) <= 0:
+        return jsonify({"erro": "Informe um equipamento_id válido."}), 400
+
+    return jsonify(historico_service.listar(int(valor))), 200
 
 
 @historico_bp.route("/<int:historico_id>", methods=["GET"])

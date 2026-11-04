@@ -821,7 +821,7 @@ Sugestão de tela: na lista de reservas aprovadas, um botão
 
 | Método e rota | Descrição |
 |---|---|
-| `GET /historico` | Lista, mais recentes primeiro |
+| `GET /historico` | Lista, mais recentes primeiro. Com `?equipamento_id=7`, só a linha do tempo desse equipamento |
 | `GET /historico/<id>` | Um registro |
 | `POST /historico` | `{ "equipamento_id", "tipo_movimentacao", "emprestimo_id"?, "descricao"? }` → **201** |
 
@@ -1015,5 +1015,48 @@ monitoramento); sem ela, 401.
 
 O n8n só envia: **To** = `destinatarios`, **Subject** = `assunto`,
 **Message (HTML)** = `mensagem_html`.
+
+## 17. Relatórios
+
+As datas são dias completos no horário de Brasília, no formato
+`AAAA-MM-DD`. Sem datas, vale os últimos 7 dias, contando hoje. O período
+máximo é de 366 dias.
+
+| Método e rota | Quem | Resposta |
+|---|---|---|
+| `GET /relatorios/resumo?inicio=&fim=` | admin, operador | Números do período e situação atual |
+| `GET /relatorios/atrasados` | admin, operador | `{ "atrasados": [...] }`, os mais antigos primeiro |
+| `GET /relatorios/mais-emprestados?inicio=&fim=&limite=` | admin, operador | `{ "periodo", "equipamentos": [...] }` (`limite` de 1 a 100; padrão 10) |
+| `GET /relatorios/manutencoes` | admin, operador | `{ "manutencoes": [...] }`, as que estão em aberto |
+| `GET /relatorios/semanal` | n8n, com a chave `X-Monitor-Token` | Tudo acima, com o e-mail pronto |
+
+**`GET /relatorios/resumo` → 200**
+
+```json
+{
+  "periodo": { "inicio": "2026-10-28", "fim": "2026-11-03" },
+  "no_periodo": {
+    "emprestimos": 3,
+    "itens_emprestados": 4,
+    "itens_devolvidos": 3,
+    "itens_devolvidos_danificados": 1,
+    "manutencoes_abertas": 1,
+    "manutencoes_concluidas": 0,
+    "reservas_criadas": 2
+  },
+  "agora": {
+    "equipamentos": { "total": 5, "disponiveis": 2, "emprestados": 1, "atrasados": 1, "manutencao": 1, "inativos": 0 },
+    "reservas_pendentes": 1,
+    "manutencoes_em_aberto": 1,
+    "solicitacoes_acesso_pendentes": 0
+  }
+}
+```
+
+**`GET /relatorios/semanal`** cobre os 7 dias completos anteriores ao dia
+da chamada. Além dos campos do resumo, traz `atrasados`,
+`mais_emprestados`, `manutencoes_em_aberto`, `assunto` e `mensagem_html`.
+Não grava nada: pode ser chamada quantas vezes for preciso. Sem a chave,
+401; sem `MONITOR_TOKEN` no backend, 503.
 
 Dúvidas ou rotas novas: falar com a equipe do backend.

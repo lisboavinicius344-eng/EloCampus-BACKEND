@@ -22,10 +22,14 @@ def registrar(cursor, equipamento_id, usuario_id, tipo, descricao,
 
 class HistoricoService:
 
-    def listar(self):
+    def listar(self, equipamento_id=None):
+        """Lista as movimentações; com equipamento_id, só as desse item."""
+        filtro = "WHERE h.equipamento_id = %s" if equipamento_id else ""
+        parametros = (equipamento_id,) if equipamento_id else ()
+
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
-                cursor.execute("""
+                cursor.execute(f"""
                     SELECT
                         h.id,
                         h.equipamento_id,
@@ -41,8 +45,9 @@ class HistoricoService:
                         ON e.id = h.equipamento_id
                     LEFT JOIN usuarios u
                         ON u.id = h.usuario_id
+                    {filtro}
                     ORDER BY h.data_movimentacao DESC, h.id DESC
-                """)
+                """, parametros)
                 registros = cursor.fetchall()
 
         return [self._para_dict(r) for r in registros]
