@@ -94,6 +94,23 @@ def _resposta_senha_provisoria(mensagem, usuario, enviado, senha):
     return resposta
 
 
+@usuarios_bp.route("/<uuid:usuario_id>/reativar", methods=["PATCH"])
+@requer_papeis("admin")
+def reativar_usuario(usuario_id):
+    try:
+        usuario = usuario_service.reativar(usuario_id)
+    except ValueError as erro:
+        return jsonify({"erro": str(erro)}), 400
+
+    if usuario is None:
+        return jsonify({"erro": "Usuário não encontrado."}), 404
+
+    return jsonify({
+        "mensagem": "Usuário reativado com sucesso.",
+        "usuario": usuario
+    }), 200
+
+
 @usuarios_bp.route("/<uuid:usuario_id>/desativar", methods=["PATCH"])
 @requer_papeis("admin")
 def desativar_usuario(usuario_id):

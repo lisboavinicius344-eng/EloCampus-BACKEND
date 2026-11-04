@@ -1,6 +1,7 @@
 import logging
 import os
 import secrets
+from concurrent.futures import ThreadPoolExecutor, wait
 from datetime import datetime, timedelta, timezone
 
 from werkzeug.security import generate_password_hash
@@ -9,6 +10,9 @@ from services.n8n_service import notificar_senha_provisoria
 
 
 logger = logging.getLogger(__name__)
+
+_envios = ThreadPoolExecutor(max_workers=2, thread_name_prefix="email")
+_pendentes = set()
 
 # Sem caracteres que se confundem ao digitar (0/O, 1/l/I).
 ALFABETO = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789"
@@ -61,3 +65,20 @@ def enviar(usuario, senha, expira_em, evento):
             usuario.get("id"),
         )
         return False
+
+
+def enviar_em_segundo_plano(usuario, senha, expira_em, evento):
+    """Envia sem esperar o n8n responder.
+
+    Usado em "Esqueci minha senha": a resposta sai no mesmo tempo, exista
+    a conta ou não, e o tempo não revela quem está cadastrado. Uma falha
+    no envio fica no log.
+    """
+    tarefa = _envios.submit(enviar, usuario, senha, expira_em, evento)
+    _pendentes.add(tarefa)
+    tarefa.add_done_callback(_pendentes.discard)
+
+
+def aguardar_envios(segundos=10):
+    """Espera os envios em andamento (usado nos testes)."""
+    wait(list(_pendentes), timeout=segundos)

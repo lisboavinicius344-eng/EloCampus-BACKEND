@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import os
 from functools import wraps
 
@@ -22,9 +24,33 @@ def _serializer():
     return URLSafeTimedSerializer(secret, salt="elocampus-auth")
 
 
-def gerar_token(usuario_id):
+def _versao_da_senha(senha_hash):
+    """Impressão digital da senha, que muda sempre que a senha muda.
+
+    Vai dentro do token: trocar a senha invalida os logins anteriores.
+    O conteúdo do token é legível, por isso usa a chave secreta em vez
+    do próprio hash.
+    """
+    chave = os.getenv("FLASK_SECRET_KEY", "").encode()
+    return hmac.new(chave, senha_hash.encode(), hashlib.sha256).hexdigest()[:32]
+
+
+def gerar_token(usuario_id, senha_hash=None):
+    """Gera o token de login; sem senha_hash, lê a senha atual no banco."""
+    if senha_hash is None:
+        with Conexao.conectar() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT senha_hash FROM usuarios WHERE id = %s",
+                    (usuario_id,)
+                )
+                senha_hash = cur.fetchone()[0]
+
     # O id é UUID: vai no token como texto.
-    return _serializer().dumps({"usuario_id": str(usuario_id)})
+    return _serializer().dumps({
+        "usuario_id": str(usuario_id),
+        "senha": _versao_da_senha(senha_hash),
+    })
 
 
 def _usuario_do_token():
@@ -52,7 +78,7 @@ def _usuario_do_token():
             cur.execute(
                 """
                 SELECT id, nome, email, papel, ativo, solicitante_id,
-                       deve_trocar_senha
+                       deve_trocar_senha, senha_hash
                 FROM usuarios
                 WHERE id = %s
                 """,
@@ -62,6 +88,13 @@ def _usuario_do_token():
 
     if usuario is None or not usuario[4]:
         return None, "Usuário inativo ou inexistente."
+
+    # Senha trocada depois deste login: é preciso entrar de novo. Tokens
+    # sem a impressão digital também são recusados.
+    if not hmac.compare_digest(
+        str(dados.get("senha", "")), _versao_da_senha(usuario[7])
+    ):
+        return None, "Sua senha foi alterada. Faça login novamente."
 
     return {
         "id": str(usuario[0]),

@@ -5,7 +5,7 @@ import pytest
 from werkzeug.security import generate_password_hash
 
 from services import senha_provisoria
-from services.auth_service import AuthService
+from services.auth_service import HASH_FICTICIO, AuthService
 from tests.test_rotas import _cabecalho, autenticado, cliente, uid  # noqa: F401
 
 
@@ -117,10 +117,35 @@ def test_troca_comum_exige_senha_diferente():
         )
 
 
+@pytest.mark.parametrize(
+    "registro",
+    [None, (1, "N", "a@b.c", "h", "aluno", False, None, False, None, None, None)],
+)
+def test_login_sem_conta_ativa_tambem_confere_uma_senha(registro):
+    # Sem isso, o tempo de resposta revelaria quais e-mails têm conta.
+    cursor = MagicMock()
+    cursor.fetchone.return_value = registro
+    conexao = MagicMock()
+    conexao.__enter__.return_value = conexao
+    conexao.cursor.return_value.__enter__.return_value = cursor
+
+    with (
+        patch("services.auth_service.Conexao.conectar", return_value=conexao),
+        patch("services.auth_service.check_password_hash") as conferir,
+    ):
+        with pytest.raises(ValueError, match="inválidos"):
+            AuthService.login({"email": "a@b.c", "senha": "x"})
+
+    conferir.assert_called_once_with(HASH_FICTICIO, "x")
+
+
 def test_login_avisa_primeiro_acesso(cliente):
-    with patch(
-        "routes.auth.AuthService.login",
-        return_value={"id": 5, "deve_trocar_senha": True},
+    with (
+        patch(
+            "routes.auth.AuthService.login",
+            return_value={"id": 5, "deve_trocar_senha": True},
+        ),
+        patch("routes.auth.gerar_token", return_value="token"),
     ):
         resposta = cliente.post(
             "/api/auth/login", json={"email": "a@b.c", "senha": "x"}

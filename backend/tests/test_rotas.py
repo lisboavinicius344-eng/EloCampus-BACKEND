@@ -14,14 +14,16 @@ def uid(numero):
     return f"00000000-0000-4000-8000-{numero:012d}"
 
 
-# (id, nome, email, papel, ativo, solicitante_id, deve_trocar_senha)
-# Ids de solicitante são texto.
+SENHA_HASH = "hash-de-teste"
+
+# (id, nome, email, papel, ativo, solicitante_id, deve_trocar_senha,
+#  senha_hash). Ids de solicitante são texto.
 USUARIOS = {
-    uid(1): (uid(1), "Admin", "admin@teste.local", "admin", True, None, False),
-    uid(2): (uid(2), "Operador", "operador@teste.local", "operador", True, None, False),
-    uid(3): (uid(3), "Aluno", "aluno@teste.local", "aluno", True, "30", False),
-    uid(4): (uid(4), "Professor", "prof@teste.local", "professor", True, "40", False),
-    uid(5): (uid(5), "Novato", "novo@teste.local", "operador", True, None, True),
+    uid(1): (uid(1), "Admin", "admin@teste.local", "admin", True, None, False, SENHA_HASH),
+    uid(2): (uid(2), "Operador", "operador@teste.local", "operador", True, None, False, SENHA_HASH),
+    uid(3): (uid(3), "Aluno", "aluno@teste.local", "aluno", True, "30", False, SENHA_HASH),
+    uid(4): (uid(4), "Professor", "prof@teste.local", "professor", True, "40", False, SENHA_HASH),
+    uid(5): (uid(5), "Novato", "novo@teste.local", "operador", True, None, True, SENHA_HASH),
 }
 
 
@@ -53,7 +55,7 @@ def autenticado():
 
 def _cabecalho(usuario):
     """Cabeçalho de login do usuário de teste 1 a 5."""
-    return {"Authorization": f"Bearer {gerar_token(uid(usuario))}"}
+    return {"Authorization": f"Bearer {gerar_token(uid(usuario), SENHA_HASH)}"}
 
 
 @pytest.mark.parametrize(

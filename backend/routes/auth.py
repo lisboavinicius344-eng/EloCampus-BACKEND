@@ -150,7 +150,11 @@ def trocar_senha():
     except ValueError as erro:
         return jsonify({"erro": str(erro)}), 400
 
-    return jsonify({"mensagem": "Senha alterada com sucesso."}), 200
+    # A troca invalida os logins anteriores, inclusive o token usado aqui.
+    return jsonify({
+        "mensagem": "Senha alterada com sucesso.",
+        "token": gerar_token(g.usuario["id"]),
+    }), 200
 
 
 @auth_bp.route("/perfil", methods=["GET"])

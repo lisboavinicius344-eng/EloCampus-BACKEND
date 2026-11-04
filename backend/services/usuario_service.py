@@ -116,6 +116,38 @@ class UsuarioService:
 
         return usuario, enviado, None if enviado else senha
 
+    def reativar(self, usuario_id):
+        with Conexao.conectar() as conexao:
+            with conexao.cursor() as cursor:
+                cursor.execute("""
+                    SELECT u.ativo, s.ativo
+                    FROM usuarios u
+                    LEFT JOIN solicitantes s ON s.id = u.solicitante_id
+                    WHERE u.id = %s
+                    FOR UPDATE OF u
+                """, (usuario_id,))
+                registro = cursor.fetchone()
+
+                if registro is None:
+                    return None
+
+                if registro[0]:
+                    raise ValueError("A conta já está ativa.")
+
+                if registro[1] is False:
+                    raise ValueError(
+                        "O solicitante desta conta está desativado. "
+                        "Reative o solicitante: a conta volta junto."
+                    )
+
+                cursor.execute("""
+                    UPDATE usuarios
+                    SET ativo = TRUE
+                    WHERE id = %s
+                """, (usuario_id,))
+
+        return self.obter_por_id(usuario_id)
+
     def desativar(self, usuario_id, usuario_logado_id):
         # Os ids chegam como UUID (rota) ou texto (token): compara em texto.
         if str(usuario_id) == str(usuario_logado_id):

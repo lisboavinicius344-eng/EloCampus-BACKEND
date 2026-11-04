@@ -71,9 +71,12 @@ def test_login_certo_zera_os_erros_da_conta(cliente):
         for _ in range(4):
             _login(cliente)
 
-    with patch("routes.auth.AuthService.login", return_value={
-        "id": uid(3), "deve_trocar_senha": False,
-    }):
+    with (
+        patch("routes.auth.AuthService.login", return_value={
+            "id": uid(3), "deve_trocar_senha": False,
+        }),
+        patch("routes.auth.gerar_token", return_value="token"),
+    ):
         assert _login(cliente).status_code == 200
 
     with patch("routes.auth.AuthService.login",

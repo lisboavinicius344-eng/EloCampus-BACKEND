@@ -137,6 +137,45 @@ class SolicitanteService:
 
         return self.obter_por_id(solicitante_id)
 
+    def reativar(self, solicitante_id):
+        """Reativa a pessoa e a conta dela.
+
+        As reservas canceladas na desativação continuam canceladas.
+        """
+        try:
+            with Conexao.conectar() as conexao:
+                with conexao.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT ativo
+                        FROM solicitantes
+                        WHERE id = %s
+                        FOR UPDATE
+                    """, (solicitante_id,))
+                    registro = cursor.fetchone()
+
+                    if registro is None:
+                        return None
+
+                    if registro[0]:
+                        raise ValueError("O solicitante já está ativo.")
+
+                    cursor.execute("""
+                        UPDATE solicitantes
+                        SET ativo = TRUE
+                        WHERE id = %s
+                    """, (solicitante_id,))
+
+                    cursor.execute("""
+                        UPDATE usuarios
+                        SET ativo = TRUE
+                        WHERE solicitante_id = %s
+                    """, (solicitante_id,))
+
+        except psycopg.errors.UniqueViolation as erro:
+            raise _erro_duplicado(erro) from None
+
+        return self.obter_por_id(solicitante_id)
+
     def desativar(self, solicitante_id):
         """Desativa a pessoa, a conta dela e as reservas ainda futuras."""
         with Conexao.conectar() as conexao:

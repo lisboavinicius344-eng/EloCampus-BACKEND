@@ -81,6 +81,23 @@ def atualizar_solicitante(solicitante_id):
         return jsonify({"erro": str(erro)}), 400
 
 
+@solicitantes_bp.route("/<string:solicitante_id>/reativar", methods=["PATCH"])
+@requer_papeis("admin", "operador")
+def reativar_solicitante(solicitante_id):
+    try:
+        solicitante = solicitante_service.reativar(solicitante_id)
+    except ValueError as erro:
+        return jsonify({"erro": str(erro)}), 400
+
+    if solicitante is None:
+        return jsonify({"erro": "Solicitante não encontrado."}), 404
+
+    return jsonify({
+        "mensagem": "Solicitante reativado com sucesso.",
+        "solicitante": solicitante
+    }), 200
+
+
 @solicitantes_bp.route("/<string:solicitante_id>/desativar", methods=["PATCH"])
 @requer_papeis("admin", "operador")
 def desativar_solicitante(solicitante_id):

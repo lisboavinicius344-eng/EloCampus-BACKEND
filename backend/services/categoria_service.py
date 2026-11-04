@@ -100,6 +100,31 @@ class CategoriaService:
 
         return self.obter_por_id(categoria_id)
 
+    def reativar(self, categoria_id):
+        with Conexao.conectar() as conexao:
+            with conexao.cursor() as cursor:
+                cursor.execute("""
+                    SELECT ativo
+                    FROM categorias
+                    WHERE id = %s
+                    FOR UPDATE
+                """, (categoria_id,))
+                registro = cursor.fetchone()
+
+                if registro is None:
+                    return None
+
+                if registro[0]:
+                    raise ValueError("A categoria já está ativa.")
+
+                cursor.execute("""
+                    UPDATE categorias
+                    SET ativo = TRUE
+                    WHERE id = %s
+                """, (categoria_id,))
+
+        return self.obter_por_id(categoria_id)
+
     def desativar(self, categoria_id):
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:

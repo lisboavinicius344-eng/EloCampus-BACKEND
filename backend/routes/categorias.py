@@ -84,6 +84,26 @@ def atualizar_categoria(categoria_id):
 
 
 @categorias_bp.route(
+    "/<int:categoria_id>/reativar",
+    methods=["PATCH"]
+)
+@requer_papeis("admin", "operador")
+def reativar_categoria(categoria_id):
+    try:
+        categoria = categoria_service.reativar(categoria_id)
+    except ValueError as erro:
+        return jsonify({"erro": str(erro)}), 400
+
+    if categoria is None:
+        return jsonify({"erro": "Categoria não encontrada."}), 404
+
+    return jsonify({
+        "mensagem": "Categoria reativada com sucesso.",
+        "categoria": categoria
+    }), 200
+
+
+@categorias_bp.route(
     "/<int:categoria_id>/desativar",
     methods=["PATCH"]
 )

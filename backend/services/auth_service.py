@@ -18,6 +18,10 @@ MENSAGEM_SENHA_EXPIRADA = (
     "receber uma nova."
 )
 
+# Conferido quando a conta não existe ou está inativa, para o tempo de
+# resposta do login não revelar quais e-mails têm conta.
+HASH_FICTICIO = generate_password_hash(secrets.token_urlsafe(32))
+
 
 class AuthService:
     @staticmethod
@@ -50,6 +54,7 @@ class AuthService:
                 usuario = cur.fetchone()
 
                 if usuario is None or not usuario[5]:
+                    check_password_hash(HASH_FICTICIO, senha)
                     raise ValueError("E-mail ou senha inválidos.")
 
                 deve_trocar_senha = usuario[7]
@@ -108,7 +113,8 @@ class AuthService:
         Não revela se o e-mail existe: a rota responde sempre igual. A
         senha atual continua valendo até a senha nova ser usada, então
         um pedido feito por outra pessoa não tira o acesso de ninguém.
-        Retorna True se um e-mail foi enviado (só para logs e testes).
+        Retorna True se um envio foi iniciado. O e-mail sai em segundo
+        plano, para o tempo de resposta não revelar se a conta existe.
         """
         email = dados.get("email")
 
@@ -161,9 +167,10 @@ class AuthService:
             "solicitante_id": registro[4],
         }
 
-        return senha_provisoria.enviar(
+        senha_provisoria.enviar_em_segundo_plano(
             usuario, senha, expira_em, "recuperacao_senha"
         )
+        return True
 
     @staticmethod
     def _consumir_senha_provisoria(cur, usuario_id):

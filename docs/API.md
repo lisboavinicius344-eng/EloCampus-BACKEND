@@ -202,10 +202,14 @@ Usada no primeiro acesso e também para trocar a senha depois.
 { "senha_atual": "minhaSenhaAntiga", "nova_senha": "minhaSenhaNova" }
 ```
 
-**200** — `{ "mensagem": "Senha alterada com sucesso." }`
+**200** — `{ "mensagem": "Senha alterada com sucesso.", "token": "..." }`
 
-O **mesmo token** passa a acessar todas as rotas — não é preciso
-entrar de novo.
+**Trocar a senha encerra todos os logins anteriores**, em qualquer
+aparelho, inclusive o token usado nesta chamada, que passa a responder
+401 ("Sua senha foi alterada. Faça login novamente."). Use o `token` da
+resposta para continuar logado, ou leve a pessoa de volta ao login. O
+mesmo vale quando o admin reenvia a senha e quando uma senha de
+recuperação é usada.
 
 Erros (400): nova senha com menos de 8 caracteres; na troca comum,
 senha atual ausente ou incorreta, ou nova senha igual à atual.
@@ -496,6 +500,7 @@ Objeto: `{ "id", "nome", "descricao", "ativo" }`
 | `POST /categorias` | admin, operador | `{ "nome", "descricao" }` → **201** |
 | `PUT /categorias/<id>` | admin, operador | `{ "nome", "descricao" }` |
 | `PATCH /categorias/<id>/desativar` | admin, operador | Recusa se houver equipamentos não baixados na categoria |
+| `PATCH /categorias/<id>/reativar` | admin, operador | Recusa (400) se já estiver ativa |
 
 O nome é único sem diferenciar maiúsculas ("Notebook" = "notebook").
 
@@ -534,6 +539,7 @@ Pessoas que recebem empréstimos e fazem reservas.
 | `POST /solicitantes` | admin, operador | `{ "nome", "tipo", "email", "matricula"?, "setor"?, "telefone"? }` → **201** |
 | `PUT /solicitantes/<id>` | admin, operador | Mesmo corpo do `POST` |
 | `PATCH /solicitantes/<id>/desativar` | admin, operador | 404 se não existir ou já estiver desativado |
+| `PATCH /solicitantes/<id>/reativar` | admin, operador | Reativa a pessoa **e a conta dela**. Recusa (400) se já estiver ativo ou se outro solicitante ativo usar o mesmo e-mail |
 
 - **Mudar o tipo** de quem tem conta: aluno ↔ professor atualiza a conta
   junto; virar servidor, técnico ou externo é recusado (400), porque
@@ -541,6 +547,7 @@ Pessoas que recebem empréstimos e fazem reservas.
 - **Desativar** é recusado (400) enquanto a pessoa estiver com algum
   equipamento. Ao desativar, a **conta dela também é desativada** e as
   reservas pendentes ou aprovadas são canceladas.
+- **Reativar** não recupera as reservas canceladas na desativação.
 
 ---
 
@@ -854,6 +861,7 @@ Objeto: `{ "id", "nome", "email", "papel", "ativo", "solicitante_id", "criado_em
 | `POST /usuarios` | `{ "nome", "email", "papel": "admin" \| "operador" }` → **201** |
 | `PATCH /usuarios/<id>/reenviar-senha` | Gera e envia uma **nova senha provisória** (24 h). Recusado (400) na própria conta |
 | `PATCH /usuarios/<id>/desativar` | Não permite desativar a própria conta nem o último administrador |
+| `PATCH /usuarios/<id>/reativar` | Recusado (400) se a conta já estiver ativa ou se o solicitante dela estiver desativado |
 
 O admin **não define a senha**: a pessoa recebe a senha provisória por
 e-mail e cria a própria no primeiro acesso.
