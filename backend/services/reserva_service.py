@@ -308,7 +308,8 @@ class ReservaService:
 
                 if indisponiveis:
                     raise ValueError(
-                        f"Equipamentos indisponíveis: {indisponiveis}."
+                        "Equipamentos indisponíveis: "
+                        f"{regras.nomes_dos_equipamentos(cursor, indisponiveis)}."
                     )
 
                 verificar_elegibilidade(cursor, solicitante[0], ids)
@@ -330,8 +331,8 @@ class ReservaService:
 
                 if conflitos:
                     raise ValueError(
-                        "Equipamentos com reservas conflitantes: "
-                        f"{conflitos}."
+                        "Já existe reserva nesse período para: "
+                        f"{regras.nomes_dos_equipamentos(cursor, conflitos)}."
                     )
 
                 # Verifica conflitos com empréstimos em andamento.
@@ -356,8 +357,8 @@ class ReservaService:
 
                 if conflitos_emprestimos:
                     raise ValueError(
-                        "Equipamentos com empréstimos conflitantes: "
-                        f"{conflitos_emprestimos}."
+                        "Estes equipamentos estarão emprestados nesse período: "
+                        f"{regras.nomes_dos_equipamentos(cursor, conflitos_emprestimos)}."
                     )
 
                 cursor.execute("""
@@ -479,7 +480,8 @@ class ReservaService:
 
                     if indisponiveis:
                         raise ValueError(
-                            f"Equipamentos indisponíveis: {indisponiveis}."
+                            "Equipamentos indisponíveis: "
+                            f"{regras.nomes_dos_equipamentos(cursor, indisponiveis)}."
                         )
 
                     # Confere conflitos com outras reservas.
@@ -502,8 +504,8 @@ class ReservaService:
 
                     if conflitos:
                         raise ValueError(
-                            "Equipamentos com reservas conflitantes: "
-                            f"{conflitos}."
+                            "Já existe reserva nesse período para: "
+                            f"{regras.nomes_dos_equipamentos(cursor, conflitos)}."
                         )
 
                     # Confere conflitos com empréstimos em andamento.
@@ -531,8 +533,8 @@ class ReservaService:
 
                     if conflitos_emprestimos:
                         raise ValueError(
-                            "Equipamentos com empréstimos conflitantes: "
-                            f"{conflitos_emprestimos}."
+                            "Estes equipamentos estarão emprestados nesse período: "
+                            f"{regras.nomes_dos_equipamentos(cursor, conflitos_emprestimos)}."
                         )
 
                 cursor.execute("""

@@ -214,6 +214,15 @@ def test_listagem_de_reservas_traz_os_equipamentos():
     assert reservas[1]["itens"] == []
 
 
+def test_mensagem_de_erro_mostra_o_nome_do_equipamento():
+    from services import regras
+
+    cursor = MagicMock()
+    cursor.fetchall.return_value = [("Mouse", "01"), ("Projetor", None)]
+
+    assert regras.nomes_dos_equipamentos(cursor, [1, 2]) == "Mouse (01), Projetor"
+
+
 def test_resposta_da_api_nao_ganha_o_email_do_solicitante():
     registro = (4, "30", "Ana", None, None, None, None, "aprovada", None, None)
 

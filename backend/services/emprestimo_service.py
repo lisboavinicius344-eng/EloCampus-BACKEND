@@ -199,13 +199,14 @@ class EmprestimoService:
                     for equipamento in equipamentos:
                         if equipamento[1] != "disponivel":
                             raise ValueError(
-                                f"Equipamento {equipamento[0]} "
-                                "não está disponível."
+                                "Equipamento não está disponível: "
+                                f"{regras.nomes_dos_equipamentos(cursor, [equipamento[0]])}."
                             )
 
                         if equipamento[2] == "danificado":
                             raise ValueError(
-                                f"Equipamento {equipamento[0]} está danificado."
+                                "Equipamento danificado: "
+                                f"{regras.nomes_dos_equipamentos(cursor, [equipamento[0]])}."
                             )
 
                     verificar_elegibilidade(cursor, solicitante[0], itens)
@@ -232,8 +233,8 @@ class EmprestimoService:
 
                     if reservados:
                         raise ValueError(
-                            "Equipamentos reservados por outra pessoa "
-                            f"nesse período: {reservados}. Ajuste a data "
+                            "Equipamentos reservados por outra pessoa nesse período: "
+                            f"{regras.nomes_dos_equipamentos(cursor, reservados)}. Ajuste a data "
                             "de devolução ou escolha outro equipamento."
                         )
 

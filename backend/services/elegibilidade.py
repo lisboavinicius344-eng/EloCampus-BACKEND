@@ -1,3 +1,6 @@
+from services import regras
+
+
 # Tipos de solicitante considerados funcionários da instituição.
 # Equipamentos com elegibilidade "somente_funcionarios" (ex.: itens de
 # laboratório ou de uso docente) não ficam disponíveis para os demais.
@@ -25,5 +28,5 @@ def verificar_elegibilidade(cursor, tipo_solicitante, equipamento_ids):
     if restritos:
         raise ValueError(
             "Equipamentos disponíveis somente para professores e "
-            f"servidores: {restritos}."
+            f"servidores: {regras.nomes_dos_equipamentos(cursor, restritos)}."
         )

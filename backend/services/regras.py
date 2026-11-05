@@ -42,6 +42,21 @@ def expirar_reservas(cursor):
     cursor.execute(SQL_EXPIRAR_RESERVAS)
 
 
+def nomes_dos_equipamentos(cursor, ids):
+    """Texto para mensagens de erro: "Mouse (01), Projetor (PRJ-7)"."""
+    cursor.execute("""
+        SELECT nome, numero_patrimonio
+        FROM equipamentos
+        WHERE id = ANY(%s)
+        ORDER BY nome
+    """, (list(ids),))
+
+    return ", ".join(
+        f"{registro[0]} ({registro[1]})" if registro[1] else str(registro[0])
+        for registro in cursor.fetchall()
+    )
+
+
 def verificar_limite_itens(cursor, solicitante_id, quantidade_nova):
     """Recusa o pedido que passaria do limite de itens por pessoa.
 

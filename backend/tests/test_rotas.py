@@ -271,7 +271,7 @@ def test_elegibilidade_de_equipamento_restrito(tipo, permitido):
     from services.elegibilidade import verificar_elegibilidade
 
     cursor = MagicMock()
-    cursor.fetchall.return_value = [(7,)]
+    cursor.fetchall.return_value = [(7, "PRJ-7")]
 
     if permitido:
         verificar_elegibilidade(cursor, tipo, [7])
