@@ -680,7 +680,7 @@ Reserva expirada não pode ser aprovada, cancelada nem retirada.
 
 | Método e rota | Quem | Descrição |
 |---|---|---|
-| `GET /reservas` | logado | Equipe vê todas; aluno/professor só as próprias → `{ "reservas": [...] }` |
+| `GET /reservas` | logado | Equipe vê todas; aluno/professor só as próprias → `{ "reservas": [...] }` (com `itens`) |
 | `GET /reservas/<id>` | logado | `{ "reserva": {...} }` (com `itens`) |
 | `POST /reservas` | logado | Cria a reserva → **201** |
 | `PATCH /reservas/<id>/aprovar` | admin, operador | Só reservas `pendente` |

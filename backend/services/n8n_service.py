@@ -117,7 +117,7 @@ def notificar_devolucao_equipamento(
         },
     )
 
-def notificar_reserva(reserva, evento):
+def notificar_reserva(reserva, evento, solicitante_email=None):
     return _notificar(
         "N8N_RESERVA_WEBHOOK_URL",
         evento,
@@ -126,6 +126,7 @@ def notificar_reserva(reserva, evento):
                 "id": reserva["id"],
                 "solicitante_id": reserva["solicitante_id"],
                 "solicitante": reserva["solicitante"],
+                "solicitante_email": solicitante_email,
                 "usuario_responsavel_id": (
                     reserva["usuario_responsavel_id"]
                 ),

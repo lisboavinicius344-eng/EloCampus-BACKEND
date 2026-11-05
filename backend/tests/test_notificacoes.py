@@ -144,10 +144,77 @@ def test_alterar_status_da_reserva_notifica(
         patch.object(
             servico,
             "obter_por_id",
-            return_value={"id": 4},
+            return_value={"id": 4, "solicitante_id": "30"},
+        ),
+        patch.object(
+            ReservaService,
+            "_email_do_solicitante",
+            return_value="ana@t.local",
         ),
         patch("services.reserva_service.notificar_reserva") as notificar,
     ):
         servico.alterar_status(4, operacao)
 
-    notificar.assert_called_once_with({"id": 4}, evento)
+    notificar.assert_called_once_with(
+        {"id": 4, "solicitante_id": "30"}, evento, "ana@t.local"
+    )
+
+
+def test_aviso_de_reserva_leva_o_email_do_solicitante(monkeypatch):
+    monkeypatch.setenv("N8N_RESERVA_WEBHOOK_URL", "http://n8n.teste/r")
+    reserva = {
+        "id": 4,
+        "solicitante_id": "30",
+        "solicitante": "Ana",
+        "usuario_responsavel_id": None,
+        "usuario_responsavel": None,
+        "data_inicio": "2026-11-10T13:00:00+00:00",
+        "data_fim": "2026-11-10T17:00:00+00:00",
+        "status": "aprovada",
+        "observacoes": None,
+        "itens": [],
+    }
+
+    with (
+        patch.object(
+            ReservaService,
+            "_email_do_solicitante",
+            return_value="ana@t.local",
+        ),
+        patch("services.n8n_service.requests.post") as post,
+    ):
+        ReservaService._notificar_com_seguranca(reserva, "reserva_aprovada")
+
+    corpo = post.call_args.kwargs["json"]
+    assert corpo["evento"] == "reserva_aprovada"
+    assert corpo["reserva"]["solicitante_email"] == "ana@t.local"
+
+
+def test_listagem_de_reservas_traz_os_equipamentos():
+    cursor = MagicMock()
+    cursor.fetchall.side_effect = [
+        [
+            (5, "30", "Ana", None, None, None, None, "aprovada", None, None),
+            (4, "31", "Rui", None, None, None, None, "pendente", None, None),
+        ],
+        [(5, 7, "Projetor", "disponivel")],
+    ]
+
+    with patch(
+        "services.reserva_service.Conexao.conectar",
+        return_value=_conexao_simulada(cursor),
+    ):
+        reservas = ReservaService().listar()
+
+    assert reservas[0]["itens"] == [{
+        "equipamento_id": 7,
+        "equipamento": "Projetor",
+        "status_equipamento": "disponivel",
+    }]
+    assert reservas[1]["itens"] == []
+
+
+def test_resposta_da_api_nao_ganha_o_email_do_solicitante():
+    registro = (4, "30", "Ana", None, None, None, None, "aprovada", None, None)
+
+    assert "solicitante_email" not in ReservaService._para_dict(registro)

@@ -29,12 +29,53 @@ class ReservaService:
             return
 
         try:
-            notificar_reserva(reserva, evento)
+            notificar_reserva(
+                reserva,
+                evento,
+                ReservaService._email_do_solicitante(reserva["solicitante_id"]),
+            )
         except Exception:
             logger.exception(
                 "Falha ao notificar o n8n sobre o evento %s.",
                 evento,
             )
+
+    @staticmethod
+    def _email_do_solicitante(solicitante_id):
+        # Só para o aviso do n8n: não faz parte das respostas da API.
+        with Conexao.conectar() as conexao:
+            with conexao.cursor() as cursor:
+                cursor.execute(
+                    "SELECT email FROM solicitantes WHERE id = %s",
+                    (solicitante_id,)
+                )
+                registro = cursor.fetchone()
+
+        return registro[0] if registro else None
+
+    @staticmethod
+    def _incluir_itens(cursor, reservas):
+        """Preenche "itens" de cada reserva da listagem."""
+        por_reserva = {reserva["id"]: [] for reserva in reservas}
+
+        if por_reserva:
+            cursor.execute("""
+                SELECT ir.reserva_id, ir.equipamento_id, e.nome, e.status
+                FROM itens_reserva ir
+                JOIN equipamentos e ON e.id = ir.equipamento_id
+                WHERE ir.reserva_id = ANY(%s)
+                ORDER BY ir.id
+            """, (list(por_reserva),))
+
+            for item in cursor.fetchall():
+                por_reserva[item[0]].append({
+                    "equipamento_id": item[1],
+                    "equipamento": item[2],
+                    "status_equipamento": item[3]
+                })
+
+        for reserva in reservas:
+            reserva["itens"] = por_reserva[reserva["id"]]
 
     def listar(self):
         with Conexao.conectar() as conexao:
@@ -51,9 +92,13 @@ class ReservaService:
                     LEFT JOIN usuarios u ON u.id = r.usuario_responsavel_id
                     ORDER BY r.id DESC
                 """)
-                registros = cursor.fetchall()
+                reservas = [
+                    self._para_dict(registro)
+                    for registro in cursor.fetchall()
+                ]
+                self._incluir_itens(cursor, reservas)
 
-        return [self._para_dict(registro) for registro in registros]
+        return reservas
 
     def listar_por_solicitante(self, solicitante_id):
         with Conexao.conectar() as conexao:
@@ -71,9 +116,13 @@ class ReservaService:
                     WHERE r.solicitante_id = %s
                     ORDER BY r.id DESC
                 """, (solicitante_id,))
-                registros = cursor.fetchall()
+                reservas = [
+                    self._para_dict(registro)
+                    for registro in cursor.fetchall()
+                ]
+                self._incluir_itens(cursor, reservas)
 
-        return [self._para_dict(registro) for registro in registros]
+        return reservas
 
     def obter_por_id(self, reserva_id):
         with Conexao.conectar() as conexao:
