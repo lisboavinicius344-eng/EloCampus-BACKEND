@@ -996,7 +996,12 @@ monitoramento); sem ela, 401.
 - **Véspera:** 24 h antes do prazo, uma vez, para empréstimos de mais
   de 1 dia.
 - **Atraso:** a cada 24 h até a devolução, com cópia para quem
-  registrou o empréstimo.
+  registrou o empréstimo (exceto se for admin, que já recebe o alerta
+  abaixo).
+- **Alerta para a administração** (`tipo: "atraso_admin"`): junto com cada
+  aviso de atraso, um e-mail para todos os admins ativos, com os itens, os
+  dados de contato da pessoa, o prazo, os dias de atraso e quem registrou
+  o empréstimo. O workflow do n8n envia igual aos outros, sem mudança.
 - Quem não tem e-mail no cadastro fica de fora. Cada lembrete é marcado
   ao ser entregue: chamar de novo não repete.
 - `?simular=true` mostra o que seria enviado, sem marcar (para testes).

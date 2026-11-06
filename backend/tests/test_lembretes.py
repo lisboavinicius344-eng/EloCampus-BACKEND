@@ -42,3 +42,22 @@ def test_processa_e_simula(cliente, monkeypatch):
     assert [c.kwargs["simular"] for c in processar.call_args_list] == [
         False, True
     ]
+
+
+def test_copia_do_atraso_nao_vai_para_admin():
+    from datetime import datetime, timedelta, timezone
+    from unittest.mock import MagicMock
+
+    from services.lembrete_service import LembreteService
+
+    prevista = datetime.now(timezone.utc) - timedelta(days=1)
+    cursor = MagicMock()
+    cursor.fetchone.return_value = (5, prevista, "Ana Lima", "ana@t.local", "Bia", "bia@t.local")
+    cursor.fetchall.return_value = [("Notebook", "NB-1")]
+
+    como_operadora = LembreteService._montar(cursor, 5, "atraso")
+    como_admin = LembreteService._montar(cursor, 5, "atraso", ["bia@t.local"])
+
+    assert como_operadora["copia"] == "bia@t.local"
+    assert como_admin["copia"] is None
+    assert como_admin["destinatarios"] == "ana@t.local"

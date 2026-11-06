@@ -8,6 +8,9 @@ e devolve os e-mails prontos: o n8n só envia.
   1 dia (num empréstimo de horas, chegaria logo depois da retirada).
 - Atraso: a cada 24 h até a devolução, com cópia para quem registrou o
   empréstimo.
+- Alerta de atraso para a administração: junto com cada aviso de atraso,
+  um e-mail para os administradores ativos, com os itens e os dados de
+  contato da pessoa.
 """
 from datetime import datetime, timezone
 from html import escape
@@ -86,18 +89,112 @@ class LembreteService:
                             WHERE id = ANY(%s)
                         """, (atraso,))
 
+                admins = self._emails_dos_admins(cursor) if atraso else []
+
                 lembretes = [
                     self._montar(cursor, emprestimo_id, "vespera")
                     for emprestimo_id in vespera
                 ] + [
-                    self._montar(cursor, emprestimo_id, "atraso")
+                    self._montar(cursor, emprestimo_id, "atraso", admins)
                     for emprestimo_id in atraso
                 ]
+
+                if admins:
+                    lembretes += [
+                        self._montar_alerta_admin(cursor, emprestimo_id, admins)
+                        for emprestimo_id in atraso
+                    ]
 
         return lembretes
 
     @staticmethod
-    def _montar(cursor, emprestimo_id, tipo):
+    def _emails_dos_admins(cursor):
+        cursor.execute("""
+            SELECT email
+            FROM usuarios
+            WHERE papel = 'admin' AND ativo = TRUE AND email IS NOT NULL
+            ORDER BY email
+        """)
+        return [r[0] for r in cursor.fetchall()]
+
+    @staticmethod
+    def _montar_alerta_admin(cursor, emprestimo_id, admins):
+        """E-mail para a administração: o que está atrasado e com quem."""
+        cursor.execute("""
+            SELECT e.data_prevista_devolucao, e.data_emprestimo,
+                   s.nome, s.email, s.telefone, s.matricula, s.tipo,
+                   u.nome
+            FROM emprestimos e
+            JOIN solicitantes s ON s.id = e.solicitante_id
+            JOIN usuarios u ON u.id = e.usuario_responsavel_id
+            WHERE e.id = %s
+        """, (emprestimo_id,))
+        (prevista, retirada, nome, email, telefone, matricula, tipo,
+         responsavel) = cursor.fetchone()
+
+        cursor.execute("""
+            SELECT eq.nome, eq.numero_patrimonio
+            FROM itens_emprestimo ie
+            JOIN equipamentos eq ON eq.id = ie.equipamento_id
+            WHERE ie.emprestimo_id = %s AND ie.data_devolucao IS NULL
+            ORDER BY ie.id
+        """, (emprestimo_id,))
+        itens = [{"nome": r[0], "patrimonio": r[1]} for r in cursor.fetchall()]
+
+        dias_atraso = max((datetime.now(timezone.utc) - prevista).days, 0)
+        quando = (
+            "desde hoje" if dias_atraso == 0
+            else f"há {dias_atraso} dia{'s' if dias_atraso > 1 else ''}"
+        )
+        itens_texto = ", ".join(
+            f"{i['nome']} ({i['patrimonio']})" if i["patrimonio"] else i["nome"]
+            for i in itens
+        )
+        linhas = [
+            ("Equipamento(s)", itens_texto),
+            ("Pessoa", f"{nome} ({tipo})"),
+            ("E-mail", email or "não informado"),
+            ("Telefone", telefone or "não informado"),
+            ("Matrícula", matricula or "não informada"),
+            ("Retirada", _data_local(retirada)),
+            ("Devolução prevista", _data_local(prevista)),
+            ("Atraso", quando),
+            ("Registrado por", responsavel),
+        ]
+        tabela = "".join(
+            '<tr><td style="padding:6px 12px 6px 0;color:#5b5570;white-space:nowrap">'
+            f"{escape(rotulo)}</td><td style=\"padding:6px 0\"><strong>"
+            f"{escape(str(valor))}</strong></td></tr>"
+            for rotulo, valor in linhas
+        )
+        texto = (
+            "Há um empréstimo com devolução atrasada. Entre em contato com "
+            "a pessoa ou registre a devolução no sistema."
+            f'<table style="margin:16px 0 0;font-size:14px;border-collapse:collapse">{tabela}</table>'
+        )
+
+        return {
+            "tipo": "atraso_admin",
+            "emprestimo_id": emprestimo_id,
+            "para": admins[0],
+            "copia": None,
+            "destinatarios": ", ".join(admins),
+            "solicitante": {"nome": nome, "email": email},
+            "itens": itens,
+            "itens_texto": itens_texto,
+            "data_prevista_devolucao": prevista.isoformat(),
+            "data_prevista_formatada": _data_local(prevista),
+            "dias_atraso": dias_atraso,
+            "assunto": f"ELO Campus - atraso: {itens_texto} com {nome} ({quando})",
+            "mensagem_html": _html(
+                "equipe", "Devolução atrasada", texto,
+                "Este aviso se repete a cada 24 horas até a devolução.",
+                botao="Abrir o ELO Campus",
+            ),
+        }
+
+    @staticmethod
+    def _montar(cursor, emprestimo_id, tipo, admins=()):
         cursor.execute("""
             SELECT e.id, e.data_prevista_devolucao, s.nome, s.email,
                    u.nome, u.email
@@ -159,8 +256,13 @@ class LembreteService:
                 "novas reservas nem empréstimos."
             )
 
-        # No atraso, quem registrou o empréstimo recebe uma cópia.
-        copia = responsavel_email if tipo == "atraso" else None
+        # No atraso, quem registrou o empréstimo recebe uma cópia, exceto
+        # se for admin: os admins já recebem o alerta próprio.
+        copia = (
+            responsavel_email
+            if tipo == "atraso" and responsavel_email not in admins
+            else None
+        )
 
         return {
             "tipo": tipo,
@@ -181,7 +283,7 @@ class LembreteService:
         }
 
 
-def _html(primeiro_nome, titulo, texto, aviso):
+def _html(primeiro_nome, titulo, texto, aviso, botao="Ver meus empréstimos"):
     """O mesmo visual dos e-mails de senha do ELO Campus."""
     return f"""<div style="margin:0;padding:24px 12px;background:#f3f1fb;font-family:Arial,Helvetica,sans-serif;color:#1f1b2e">
   <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;overflow:hidden;border:1px solid #e4def7">
@@ -193,7 +295,7 @@ def _html(primeiro_nome, titulo, texto, aviso):
       <p style="margin:0 0 14px">Olá, <strong>{escape(primeiro_nome)}</strong>!</p>
       <p style="margin:0 0 14px">{texto}</p>
       <p style="text-align:center;margin:22px 0">
-        <a href="{LINK_ACESSO}" style="background:#7c3aed;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:999px;font-weight:bold;display:inline-block">Ver meus empréstimos</a>
+        <a href="{LINK_ACESSO}" style="background:#7c3aed;color:#ffffff;text-decoration:none;padding:12px 26px;border-radius:999px;font-weight:bold;display:inline-block">{escape(botao)}</a>
       </p>
       <p style="margin:0;padding:12px 14px;background:#fff7ed;border-radius:10px;font-size:13px;color:#7c2d12">{escape(aviso)}</p>
     </div>
