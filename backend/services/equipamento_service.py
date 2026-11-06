@@ -4,7 +4,7 @@ import psycopg
 
 from database.conexao import Conexao
 from models.equipamento import Equipamento
-from services import imagem_equipamento, regras
+from services import imagem_equipamento, qr_equipamento, regras
 from services.historico_service import registrar as registrar_historico
 from services.manutencao_service import abrir_automatica
 from services.painel_service import SITUACAO_SQL
@@ -571,5 +571,13 @@ class EquipamentoService:
                 f"?v={int(registro[15].timestamp())}"
                 if registro[14]
                 else None
-            )
+            ),
+            # Imagem da etiqueta, relativa à base da API, e o endereço que
+            # ela grava (o que a câmera do celular abre).
+            "qr_imagem_url": f"/equipamentos/{registro[0]}/qrcode",
+            "qr_url": qr_equipamento.conteudo({
+                "id": registro[0],
+                "numero_patrimonio": registro[2],
+                "qr_code": registro[9],
+            }),
         }

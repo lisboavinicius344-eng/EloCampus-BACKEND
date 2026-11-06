@@ -461,6 +461,27 @@ a tela funciona sem alterações.
   `"/equipamentos/7/imagem?v=1793214215"`. No front:
   `img.src = API_BASE_URL + equipamento.imagem_url`.
 
+### `GET /equipamentos/<id>/qrcode` — público
+
+Imagem do QR Code da etiqueta. Pública pelo mesmo motivo da foto: a tag
+`<img>` não envia o token.
+
+- `?formato=svg` (padrão) ou `?formato=png`; `?baixar=1` faz o navegador
+  baixar o arquivo (`qrcode-<código>.svg`).
+- O QR grava a **URL da consulta pública** com o código do equipamento,
+  por exemplo
+  `https://…/pages/consulta-qr.html?codigo=PRJ-0017`: a câmera do celular
+  abre a página direto, e a leitura dentro do sistema entende a URL.
+- O código é o `qr_code` do equipamento; sem ele, o patrimônio; sem os
+  dois, o ID.
+- O endereço da página vem da variável `QR_CONSULTA_URL` do backend.
+  **Etiqueta impressa não muda**: defina o endereço definitivo antes de
+  imprimir.
+- O objeto equipamento traz `qr_imagem_url` (relativa à base da API, como
+  `imagem_url`) e `qr_url` (o endereço gravado no QR).
+- O SVG tem 37 mm de lado por padrão; na impressão, use pelo menos 25 mm.
+- 404 se o equipamento não existir; 400 para formato inválido.
+
 ### `GET /equipamentos/<id>/imagem` — público
 
 Devolve a foto (o arquivo da imagem, não JSON), para usar direto em

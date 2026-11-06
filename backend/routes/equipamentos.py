@@ -1,4 +1,5 @@
 from flask import Blueprint, Response, g, jsonify, request
+from services import qr_equipamento
 from services.equipamento_service import EquipamentoService
 from services.auth_token import requer_autenticacao, requer_papeis
 
@@ -68,6 +69,35 @@ def obter_imagem_equipamento(equipamento_id):
     resposta.headers["Cache-Control"] = "public, max-age=604800"
     resposta.headers["X-Content-Type-Options"] = "nosniff"
     resposta.headers["Content-Disposition"] = "inline"
+    return resposta
+
+
+@equipamentos_bp.route("/<int:equipamento_id>/qrcode", methods=["GET"])
+def obter_qrcode_equipamento(equipamento_id):
+    # Pública pelo mesmo motivo da imagem; o QR só grava a URL da
+    # consulta pública, que já mostra esses dados sem login.
+    formato = request.args.get("formato", "svg").strip().lower()
+
+    if formato not in qr_equipamento.FORMATOS:
+        return jsonify({"erro": "Formato inválido. Use svg ou png."}), 400
+
+    equipamento = equipamento_service.obter_por_id(equipamento_id)
+
+    if equipamento is None:
+        return jsonify({"erro": "Equipamento não encontrado."}), 404
+
+    conteudo, tipo = qr_equipamento.gerar(
+        qr_equipamento.conteudo(equipamento), formato
+    )
+    resposta = Response(conteudo, mimetype=tipo)
+    # Curto: o código muda se o patrimônio ou o QR forem editados.
+    resposta.headers["Cache-Control"] = "public, max-age=3600"
+    resposta.headers["X-Content-Type-Options"] = "nosniff"
+
+    nome = f"qrcode-{qr_equipamento.codigo(equipamento)}.{formato}"
+    nome = "".join(c if c.isalnum() or c in "-_." else "-" for c in nome)
+    modo = "attachment" if request.args.get("baixar") else "inline"
+    resposta.headers["Content-Disposition"] = f'{modo}; filename="{nome}"'
     return resposta
 
 
