@@ -481,6 +481,8 @@ a imagem em cache sem mostrar a antiga.
 > preservar o histórico: use `PATCH /equipamentos/<id>/inativar`.
 
 **Baixa (`PATCH /equipamentos/<id>/inativar`):**
+- corpo opcional `{ "observacoes": "motivo" }` (até 500 caracteres): o
+  motivo vai para a descrição da baixa no histórico;
 - recusada (400) para equipamento **emprestado** ou que esteja em
   **reserva pendente ou aprovada** (a mensagem lista as reservas, para
   cancelar ou rejeitar antes);
@@ -876,9 +878,9 @@ Resposta de `POST /usuarios` e `reenviar-senha`:
 }
 ```
 
-Se o e-mail falhar (`"email_enviado": false`), a resposta inclui
-`"senha_provisoria"` para o admin **repassar pessoalmente** — mostre-a
-uma única vez, com destaque.
+A senha provisória **nunca** vem na resposta. Se o e-mail falhar
+(`"email_enviado": false`), mostre o aviso da `mensagem`: o admin corrige
+o serviço de e-mail e usa **reenviar-senha**.
 
 Use **reenviar-senha** quando a senha provisória expirar, o e-mail não
 chegar ou alguém esquecer a senha: a senha anterior deixa de valer e a
@@ -933,8 +935,9 @@ ou corrigir os dados:
   pela equipe), a conta é **vinculada** a ele. Para vincular a outro
   solicitante, envie `"solicitante_id"`.
 - Se não existir, o solicitante é **criado** com os dados do pedido.
-- Se o e-mail falhar (`"email_enviado": false`), a resposta traz
-  `"senha_provisoria"` para o admin repassar pessoalmente.
+- Se o e-mail falhar (`"email_enviado": false`), a conta é criada mesmo
+  assim, sem a senha na resposta: depois de corrigir o envio, use
+  `PATCH /usuarios/<id>/reenviar-senha`.
 - Erros (400): solicitação já analisada, e-mail que já tem conta,
   solicitante de tipo sem conta (servidor, técnico, externo).
 

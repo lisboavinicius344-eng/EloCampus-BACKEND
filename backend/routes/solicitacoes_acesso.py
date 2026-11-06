@@ -59,16 +59,14 @@ def aprovar_solicitacao(solicitacao_id):
         "mensagem": (
             "Acesso aprovado. A senha provisória foi enviada por e-mail."
             if enviado
-            else "Acesso aprovado, mas o e-mail não foi enviado. Repasse "
-                 "a senha provisória pessoalmente."
+            else "Acesso aprovado, mas o e-mail não foi enviado. Confira "
+                 "o serviço de e-mail e use \"Reenviar instruções\" na "
+                 "Equipe do sistema."
         ),
         "email_enviado": enviado,
         "solicitacao": solicitacao,
         "usuario": usuario,
     }
-
-    if senha is not None:
-        resposta["senha_provisoria"] = senha
 
     return jsonify(resposta), 200
 

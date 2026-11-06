@@ -179,3 +179,24 @@ def test_reserva_da_equipe_e_de_quem_esta_logado(cliente, autenticado):
         )
 
     assert cadastrar.call_args.args[0]["usuario_responsavel_id"] == uid(2)
+
+
+def test_baixa_leva_o_motivo_ao_servico(cliente, autenticado):
+    with patch("routes.equipamentos.equipamento_service.inativar",
+               return_value={"id": 3}) as inativar:
+        cliente.patch(
+            "/api/equipamentos/3/inativar",
+            json={"observacoes": "Tela quebrada"},
+            headers=_cabecalho(2),
+        )
+
+    assert inativar.call_args.args == (3, uid(2), "Tela quebrada")
+
+
+def test_motivo_da_baixa_e_validado():
+    from services.equipamento_service import EquipamentoService
+
+    with pytest.raises(ValueError, match="500"):
+        EquipamentoService().inativar(3, uid(1), "x" * 501)
+    with pytest.raises(ValueError, match="texto"):
+        EquipamentoService().inativar(3, uid(1), 7)

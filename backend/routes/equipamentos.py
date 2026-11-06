@@ -105,9 +105,12 @@ def atualizar_equipamento(equipamento_id):
 )
 @requer_papeis("admin", "operador")
 def inativar_equipamento(equipamento_id):
+    dados = request.get_json(silent=True) or {}
+    observacoes = dados.get("observacoes") if isinstance(dados, dict) else None
+
     try:
         equipamento = equipamento_service.inativar(
-            equipamento_id, g.usuario["id"]
+            equipamento_id, g.usuario["id"], observacoes
         )
 
         if equipamento is None:

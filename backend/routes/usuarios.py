@@ -44,7 +44,7 @@ def cadastrar_usuario():
         return jsonify({"erro": str(erro)}), 400
 
     return jsonify(
-        _resposta_senha_provisoria("Usuário cadastrado.", usuario, enviado, senha)
+        _resposta_senha_provisoria("Usuário cadastrado.", usuario, enviado)
     ), 201
 
 
@@ -70,28 +70,24 @@ def reenviar_senha(usuario_id):
 
     return jsonify(
         _resposta_senha_provisoria(
-            "Nova senha provisória gerada.", usuario, enviado, senha
+            "Nova senha provisória gerada.", usuario, enviado
         )
     ), 200
 
 
-def _resposta_senha_provisoria(mensagem, usuario, enviado, senha):
-    resposta = {
+def _resposta_senha_provisoria(mensagem, usuario, enviado):
+    # A senha provisória nunca vai na resposta: se o e-mail falhar, o
+    # admin corrige o envio e usa "Reenviar instruções".
+    return {
         "mensagem": mensagem + (
             " A senha provisória foi enviada por e-mail."
             if enviado
-            else " Não foi possível enviar o e-mail: repasse a senha "
-                 "provisória pessoalmente."
+            else " Não foi possível enviar o e-mail. Confira o serviço "
+                 "de e-mail e use \"Reenviar instruções\"."
         ),
         "email_enviado": enviado,
         "usuario": usuario,
     }
-
-    # Só quando o e-mail falhou, para o admin não ficar sem saída.
-    if not enviado:
-        resposta["senha_provisoria"] = senha
-
-    return resposta
 
 
 @usuarios_bp.route("/<uuid:usuario_id>/reativar", methods=["PATCH"])

@@ -287,12 +287,21 @@ class EquipamentoService:
 
         return equipamento_atualizado
 
-    def inativar(self, equipamento_id, usuario_id=None):
+    def inativar(self, equipamento_id, usuario_id=None, observacoes=None):
         """Dá baixa no equipamento (retira do patrimônio; estado final).
 
         Recusa equipamento emprestado ou com reserva ativa. A manutenção
-        aberta é cancelada, e tudo vai para o histórico.
+        aberta é cancelada, e tudo vai para o histórico, com o motivo
+        informado em observacoes.
         """
+        if observacoes is not None and not isinstance(observacoes, str):
+            raise ValueError("O motivo da baixa deve ser um texto.")
+
+        motivo = (observacoes or "").strip()
+
+        if len(motivo) > 500:
+            raise ValueError("O motivo da baixa pode ter até 500 caracteres.")
+
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
                 cursor.execute("""
@@ -361,7 +370,8 @@ class EquipamentoService:
 
                 registrar_historico(
                     cursor, equipamento_id, usuario_id, "baixa",
-                    "Equipamento retirado do patrimônio (baixa).",
+                    "Equipamento retirado do patrimônio (baixa)."
+                    + (f" Motivo: {motivo}" if motivo else ""),
                 )
 
         equipamento_baixado = self.obter_por_id(equipamento_id)

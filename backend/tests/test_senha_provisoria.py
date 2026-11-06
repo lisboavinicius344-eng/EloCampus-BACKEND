@@ -205,24 +205,42 @@ def test_solicitar_acesso_restrito_ao_dominio(cliente, monkeypatch):
     assert "@ufob.edu.br" in resposta.get_json()["erro"]
 
 
-@pytest.mark.parametrize(
-    ("enviado", "devolve_senha"), [(True, False), (False, True)]
-)
-def test_admin_so_recebe_a_senha_se_o_email_falhar(
-    cliente, autenticado, enviado, devolve_senha
-):
+@pytest.mark.parametrize("enviado", [True, False])
+def test_resposta_ao_admin_nunca_traz_a_senha(cliente, autenticado, enviado):
+    senha = None if enviado else "Abc123xyzQ"
+
     with patch(
         "routes.usuarios.usuario_service.cadastrar",
-        return_value=({"id": 9}, enviado, None if enviado else "Abc123xyzQ"),
+        return_value=({"id": 9}, enviado, senha),
     ):
-        resposta = cliente.post(
+        criar = cliente.post(
             "/api/usuarios/",
             json={"nome": "N", "email": "n@t.local"},
             headers=_cabecalho(1),
         )
 
-    assert resposta.status_code == 201
-    assert ("senha_provisoria" in resposta.get_json()) is devolve_senha
+    with patch(
+        "routes.usuarios.usuario_service.reenviar_senha",
+        return_value=({"id": 9}, enviado, senha),
+    ):
+        reenviar = cliente.patch(
+            f"/api/usuarios/{uid(3)}/reenviar-senha", headers=_cabecalho(1)
+        )
+
+    with patch(
+        "routes.solicitacoes_acesso.solicitacao_service.aprovar",
+        return_value=({"id": 1}, {"id": 9}, enviado, senha),
+    ):
+        aprovar = cliente.post(
+            f"/api/solicitacoes-acesso/{uid(4)}/aprovar",
+            json={}, headers=_cabecalho(1),
+        )
+
+    for resposta in (criar, reenviar, aprovar):
+        assert resposta.status_code in (200, 201)
+        assert "senha_provisoria" not in resposta.get_json()
+        assert "Abc123xyzQ" not in resposta.get_data(as_text=True)
+        assert resposta.get_json()["email_enviado"] is enviado
 
 
 def test_envio_inclui_senha_e_validade(monkeypatch):
