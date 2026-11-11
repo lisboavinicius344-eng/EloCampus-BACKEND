@@ -126,10 +126,16 @@ redirecionar à tela de criação de senha.
     "email": "ana@escola.edu.br",
     "papel": "aluno",
     "solicitante_id": "8f38fcd1-2c4b-4e0a-9f1d-7a6b5c4d3e2f",
-    "deve_trocar_senha": false
+    "deve_trocar_senha": false,
+    "master": false
   }
 }
 ```
+
+`master: true` só para o **administrador master**: um admin cujo e-mail
+está na variável `ADMIN_MASTER_EMAILS` do backend. Só ele deve ver os IDs
+das pessoas nas telas e pode zerar os dados (seção 18). O campo também
+vem em `GET /auth/perfil` e em cada usuário de `GET /usuarios`.
 
 Se `usuario.deve_trocar_senha` for `true`, a mensagem é
 "Crie sua nova senha para continuar." — **guarde o token**
@@ -626,6 +632,20 @@ passa para `concluido`.
 | `GET /emprestimos/<id>` | logado | `{ "emprestimo": {...} }` (com `itens`) |
 | `POST /emprestimos` | admin, operador | Registra a retirada → **201** |
 | `PATCH /emprestimos/<id>/itens/<equipamento_id>/devolver` | admin, operador | Registra a devolução de um item |
+| `POST /emprestimos/<id>/cobrar` | admin, operador | Envia na hora um e-mail de cobrança para a pessoa (abaixo) |
+
+**Cobrança (`POST /emprestimos/<id>/cobrar`, sem corpo):** envia pelo n8n
+(workflow `enviar-email`, na base `N8N_WEBHOOK_BASE_URL`) um e-mail para quem está com o
+equipamento. Se o prazo já passou, o texto é de cobrança de atraso; senão,
+é um lembrete da equipe. Cada envio vai para o histórico dos itens
+(`tipo_movimentacao: "cobranca"`).
+
+- **200** `{ "mensagem", "enviado_para", "assunto" }`
+- **400**: empréstimo encerrado, pessoa sem e-mail no cadastro ou outra
+  cobrança do mesmo empréstimo há menos de 10 minutos.
+- **404**: empréstimo não encontrado.
+- **503**: o e-mail não saiu (n8n fora do ar ou envio não configurado);
+  nada é registrado, pode tentar de novo.
 
 **Corpo do `POST /emprestimos`:**
 
@@ -867,6 +887,7 @@ Sugestão de tela: na lista de reservas aprovadas, um botão
 | `manutencao` | Manutenção aberta (manual ou automática, ao devolver ou cadastrar danificado) |
 | `manutencao_concluida` | Manutenção finalizada (a descrição traz a solução e o estado final) |
 | `manutencao_cancelada` | Manutenção cancelada pela baixa |
+| `cobranca` | Cobrança de devolução enviada por e-mail pela equipe |
 | `baixa` | Equipamento retirado do patrimônio |
 
 ---
@@ -930,6 +951,7 @@ Objeto:
   "analisado_por_nome": null,
   "analisado_em": null,
   "motivo_recusa": null,
+  "justificativa": null,
   "usuario_id": null
 }
 ```
@@ -941,14 +963,22 @@ Objeto:
 | `GET /solicitacoes-acesso?status=pendente` | `{ "solicitacoes": [...] }` (pendentes primeiro; `status` opcional: `pendente`, `aprovada`, `recusada`) |
 | `GET /solicitacoes-acesso/<id>` | `{ "solicitacao": {...} }` |
 | `POST /solicitacoes-acesso/<id>/aprovar` | corpo opcional (abaixo) → `{ "mensagem", "email_enviado", "solicitacao", "usuario" }` |
-| `POST /solicitacoes-acesso/<id>/recusar` | `{ "motivo"? }` → `{ "mensagem", "solicitacao" }` |
+| `POST /solicitacoes-acesso/<id>/recusar` | `{ "motivo" }` (**obrigatório**) → `{ "mensagem", "solicitacao" }` |
+
+**Auditoria:** cada solicitação analisada traz quem analisou
+(`analisado_por`, `analisado_por_nome`), quando (`analisado_em`) e por quê
+(`justificativa`). Na aprovação, `justificativa` é opcional (até 500
+caracteres); na recusa, o `motivo` é obrigatório e é gravado também em
+`justificativa`. Use `GET /solicitacoes-acesso` (sem filtro, ou com
+`?status=aprovada` / `recusada`) para a tela de auditoria. Requer a
+migração `002_justificativa_solicitacoes.sql`.
 
 **Aprovar** cria a conta e **envia o e-mail com a senha provisória
 automaticamente**. O corpo é opcional e serve para o admin confirmar
 ou corrigir os dados:
 
 ```json
-{ "tipo": "aluno", "nome": "Ana Beatriz Lima", "matricula": "2024001", "setor": "Informática", "telefone": "(77) 99999-0000" }
+{ "tipo": "aluno", "nome": "Ana Beatriz Lima", "matricula": "2024001", "setor": "Informática", "telefone": "(77) 99999-0000", "justificativa": "Aluna do curso de Informática" }
 ```
 
 - `tipo` é obrigatório se o pedido veio sem ele.
@@ -1097,3 +1127,21 @@ Não grava nada: pode ser chamada quantas vezes for preciso. Sem a chave,
 401; sem `MONITOR_TOKEN` no backend, 503.
 
 Dúvidas ou rotas novas: falar com a equipe do backend.
+
+## 18. Administração (somente admin master)
+
+`POST /api/administracao/zerar-dados` — **apaga de vez** todos os
+equipamentos, reservas, empréstimos, manutenções e o histórico, e recomeça
+a numeração. Contas, solicitantes, categorias e solicitações de acesso
+ficam. **Não há como desfazer**: faça um backup antes.
+
+Corpo obrigatório, para evitar clique por engano:
+
+```json
+{ "confirmacao": "ZERAR DADOS" }
+```
+
+- **200** `{ "mensagem", "apagados": { "equipamentos": 12, "emprestimos": 30, ... } }`
+  (quantos registros cada tabela tinha)
+- **400**: confirmação diferente de `ZERAR DADOS`.
+- **403**: quem chamou não é o admin master.

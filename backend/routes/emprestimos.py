@@ -1,6 +1,7 @@
 
 from flask import Blueprint, jsonify, request, g
 
+from services.cobranca_service import CobrancaService, EnvioIndisponivel
 from services.emprestimo_service import EmprestimoService
 from services.auth_token import (
     PAPEIS_USUARIO_FINAL,
@@ -121,3 +122,24 @@ def devolver_equipamento(emprestimo_id, equipamento_id):
 
     except ValueError as erro:
         return jsonify({"erro": str(erro)}), 400
+
+
+@emprestimos_bp.route("/<int:emprestimo_id>/cobrar", methods=["POST"])
+@requer_papeis("admin", "operador")
+def cobrar_emprestimo(emprestimo_id):
+    """Envia na hora um e-mail de cobrança da devolução para a pessoa."""
+    try:
+        envio = CobrancaService().cobrar(emprestimo_id, g.usuario)
+    except ValueError as erro:
+        return jsonify({"erro": str(erro)}), 400
+    except EnvioIndisponivel as erro:
+        return jsonify({"erro": str(erro)}), 503
+
+    if envio is None:
+        return jsonify({"erro": "Empréstimo não encontrado."}), 404
+
+    return jsonify({
+        "mensagem": f"Cobrança enviada para {envio['para']}.",
+        "enviado_para": envio["para"],
+        "assunto": envio["assunto"],
+    }), 200

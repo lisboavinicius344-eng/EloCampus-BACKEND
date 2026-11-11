@@ -102,8 +102,31 @@ def _usuario_do_token():
         "email": usuario[2],
         "papel": usuario[3],
         "solicitante_id": usuario[5],
-        "deve_trocar_senha": usuario[6]
+        "deve_trocar_senha": usuario[6],
+        "master": eh_master(usuario[3], usuario[2]),
     }, None
+
+
+def eh_master(papel, email):
+    """Admin master: admin cujo e-mail está em ADMIN_MASTER_EMAILS.
+
+    Só ele vê os IDs das pessoas no site e pode zerar os dados.
+    """
+    lista = os.getenv("ADMIN_MASTER_EMAILS", "")
+    masters = {e.strip().lower() for e in lista.split(",") if e.strip()}
+    return papel == "admin" and str(email or "").strip().lower() in masters
+
+
+def requer_master(f):
+    @wraps(f)
+    @requer_autenticacao
+    def decorada(*args, **kwargs):
+        if not g.usuario.get("master"):
+            return jsonify({
+                "erro": "Somente o administrador master pode fazer isso."
+            }), 403
+        return f(*args, **kwargs)
+    return decorada
 
 
 def requer_autenticacao(f):

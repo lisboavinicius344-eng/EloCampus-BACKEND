@@ -7,8 +7,38 @@ import requests
 logger = logging.getLogger(__name__)
 
 
+# Base dos webhooks do n8n (ex.: https://n8n.exemplo.com/webhook/); o
+# backend acrescenta o caminho de cada workflow.
+BASE_ENV = "N8N_WEBHOOK_BASE_URL"
+
+# Caminho de cada workflow que existe no n8n. Os outros eventos
+# (empréstimo, devolução, equipamento, manutenção) não têm workflow: só são
+# enviados se a variável própria tiver a URL completa.
+CAMINHOS = {
+    "N8N_CADASTRO_WEBHOOK_URL": "cadastro-aluno",
+    "N8N_RESERVA_WEBHOOK_URL": "reservas",
+    "N8N_EMAIL_WEBHOOK_URL": "enviar-email",
+}
+
+
+def url_webhook(webhook_env):
+    """URL do webhook: a variável própria, se tiver valor, ou base + caminho."""
+    propria = os.getenv(webhook_env, "").strip()
+
+    if propria:
+        return propria
+
+    base = os.getenv(BASE_ENV, "").strip()
+    caminho = CAMINHOS.get(webhook_env)
+
+    if base and caminho:
+        return f"{base.rstrip('/')}/{caminho}"
+
+    return ""
+
+
 def _notificar(webhook_env, evento, payload):
-    webhook_url = os.getenv(webhook_env, "").strip()
+    webhook_url = url_webhook(webhook_env)
 
     if not webhook_url:
         logger.warning(

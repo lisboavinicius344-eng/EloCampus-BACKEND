@@ -13,6 +13,18 @@ usuarios_bp = Blueprint(
 usuario_service = UsuarioService()
 
 
+def _protege_master(usuario_id):
+    """Só o próprio master mexe na conta master (senha e desativação)."""
+    alvo = usuario_service.obter_por_id(usuario_id)
+
+    if alvo and alvo["master"] and not g.usuario["master"]:
+        return jsonify({
+            "erro": "Somente o administrador master pode alterar esta conta."
+        }), 403
+
+    return None
+
+
 @usuarios_bp.route("/", methods=["GET"])
 @requer_papeis("admin")
 def listar_usuarios():
@@ -58,6 +70,10 @@ def reenviar_senha(usuario_id):
             "erro": "Para a sua própria senha, use \"Alterar senha\" no "
                     "perfil ou \"Esqueci minha senha\" na tela de login."
         }), 400
+
+    bloqueio = _protege_master(usuario_id)
+    if bloqueio:
+        return bloqueio
 
     resultado = usuario_service.reenviar_senha(usuario_id)
 
@@ -110,6 +126,10 @@ def reativar_usuario(usuario_id):
 @usuarios_bp.route("/<uuid:usuario_id>/desativar", methods=["PATCH"])
 @requer_papeis("admin")
 def desativar_usuario(usuario_id):
+    bloqueio = _protege_master(usuario_id)
+    if bloqueio:
+        return bloqueio
+
     try:
         usuario = usuario_service.desativar(usuario_id, g.usuario["id"])
 

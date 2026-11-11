@@ -24,7 +24,7 @@ TIPOS = Solicitante.TIPOS_COM_CONTA
 CAMPOS = """
     sa.id, sa.nome, sa.email, sa.tipo, sa.matricula, sa.mensagem,
     sa.status, sa.criado_em, sa.analisado_por, analista.nome,
-    sa.analisado_em, sa.motivo_recusa, sa.usuario_id
+    sa.analisado_em, sa.motivo_recusa, sa.usuario_id, sa.justificativa
 """
 
 
@@ -167,6 +167,7 @@ class SolicitacaoAcessoService:
             solicitacao_id, "solicitação"
         )
         analista_id = identificadores.usuario_id(analista_id)
+        justificativa = _texto(dados.get("justificativa"), "justificativa", 500)
         vincular_id = dados.get("solicitante_id")
 
         if vincular_id is not None:
@@ -228,9 +229,10 @@ class SolicitacaoAcessoService:
                         SET status = 'aprovada',
                             analisado_por = %s,
                             analisado_em = NOW(),
-                            usuario_id = %s
+                            usuario_id = %s,
+                            justificativa = %s
                         WHERE id = %s
-                    """, (analista_id, usuario_id, solicitacao_id))
+                    """, (analista_id, usuario_id, justificativa, solicitacao_id))
 
         except psycopg.errors.UniqueViolation as erro:
             restricao = getattr(erro.diag, "constraint_name", "") or ""
@@ -267,7 +269,12 @@ class SolicitacaoAcessoService:
             solicitacao_id, "solicitação"
         )
         analista_id = identificadores.usuario_id(analista_id)
-        motivo = _texto(dados.get("motivo"), "motivo", 500)
+        # Na recusa, o motivo é obrigatório (auditoria). Aceita também
+        # "justificativa", o nome usado na aprovação.
+        motivo = _texto(
+            dados.get("motivo") or dados.get("justificativa"),
+            "motivo da recusa", 500, obrigatorio=True,
+        )
 
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
@@ -292,9 +299,10 @@ class SolicitacaoAcessoService:
                     SET status = 'recusada',
                         analisado_por = %s,
                         analisado_em = NOW(),
-                        motivo_recusa = %s
+                        motivo_recusa = %s,
+                        justificativa = %s
                     WHERE id = %s
-                """, (analista_id, motivo, solicitacao_id))
+                """, (analista_id, motivo, motivo, solicitacao_id))
 
         return self.obter_por_id(solicitacao_id)
 
@@ -382,4 +390,5 @@ class SolicitacaoAcessoService:
             ),
             "motivo_recusa": registro[11],
             "usuario_id": registro[12],
+            "justificativa": registro[13],
         }

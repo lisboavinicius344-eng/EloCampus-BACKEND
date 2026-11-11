@@ -5,6 +5,7 @@ from services.auth_service import AuthService
 from services.perfil_service import PerfilService
 from services.solicitacao_acesso_service import SolicitacaoAcessoService
 from services.auth_token import (
+    eh_master,
     gerar_token,
     requer_autenticacao,
     requer_autenticacao_para_trocar_senha,
@@ -58,6 +59,8 @@ def login():
         if usuario["deve_trocar_senha"]
         else "Login realizado com sucesso."
     )
+
+    usuario["master"] = eh_master(usuario.get("papel"), usuario.get("email"))
 
     return jsonify({
         "mensagem": mensagem,
@@ -165,6 +168,7 @@ def obter_perfil():
     if perfil is None:
         return jsonify({"erro": "Usuário não encontrado."}), 404
 
+    perfil["master"] = g.usuario["master"]
     return jsonify({"perfil": perfil}), 200
 
 

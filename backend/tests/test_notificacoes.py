@@ -1,3 +1,4 @@
+import os
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -227,3 +228,48 @@ def test_resposta_da_api_nao_ganha_o_email_do_solicitante():
     registro = (4, "30", "Ana", None, None, None, None, "aprovada", None, None)
 
     assert "solicitante_email" not in ReservaService._para_dict(registro)
+
+
+@pytest.mark.parametrize(
+    ("variavel", "esperado"),
+    [
+        ("N8N_CADASTRO_WEBHOOK_URL", "https://n8n.teste/webhook/cadastro-aluno"),
+        ("N8N_RESERVA_WEBHOOK_URL", "https://n8n.teste/webhook/reservas"),
+        ("N8N_EMAIL_WEBHOOK_URL", "https://n8n.teste/webhook/enviar-email"),
+        # Sem workflow no n8n: continua desligado sem a URL própria.
+        ("N8N_EMPRESTIMO_WEBHOOK_URL", ""),
+        ("N8N_MANUTENCAO_WEBHOOK_URL", ""),
+    ],
+)
+def test_url_do_webhook_vem_da_base(monkeypatch, variavel, esperado):
+    from services.n8n_service import url_webhook
+
+    for nome in list(os.environ):
+        if nome.startswith("N8N_"):
+            monkeypatch.delenv(nome)
+    monkeypatch.setenv("N8N_WEBHOOK_BASE_URL", "https://n8n.teste/webhook/")
+
+    assert url_webhook(variavel) == esperado
+
+
+def test_url_propria_tem_prioridade_sobre_a_base(monkeypatch):
+    from services.n8n_service import url_webhook
+
+    monkeypatch.setenv("N8N_WEBHOOK_BASE_URL", "https://n8n.teste/webhook")
+    monkeypatch.setenv("N8N_CADASTRO_WEBHOOK_URL", "https://outro.teste/webhook/senhas")
+
+    assert url_webhook("N8N_CADASTRO_WEBHOOK_URL") == "https://outro.teste/webhook/senhas"
+
+
+def test_envio_usa_a_base(monkeypatch):
+    from services.n8n_service import notificar_reserva
+
+    monkeypatch.delenv("N8N_RESERVA_WEBHOOK_URL", raising=False)
+    monkeypatch.setenv("N8N_WEBHOOK_BASE_URL", "https://n8n.teste/webhook")
+
+    with patch("services.n8n_service.requests.post") as post:
+        notificar_reserva({"id": 1, "solicitante_id": "s", "solicitante": "A", "usuario_responsavel_id": None,
+                           "usuario_responsavel": None, "data_inicio": None, "data_fim": None,
+                           "status": "aprovada", "observacoes": None, "itens": []}, "reserva_aprovada")
+
+    assert post.call_args.args[0] == "https://n8n.teste/webhook/reservas"

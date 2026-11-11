@@ -2,6 +2,7 @@ import psycopg
 
 from database.conexao import Conexao
 from services import senha_provisoria
+from services.auth_token import eh_master
 
 
 class UsuarioService:
@@ -207,4 +208,5 @@ class UsuarioService:
                 registro[6].isoformat() if registro[6] else None
             ),
             "deve_trocar_senha": registro[7],
+            "master": eh_master(registro[3], registro[2]),
         }

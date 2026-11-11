@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 import requests
 
 from database.conexao import Conexao
+from services.n8n_service import url_webhook
 
 
 TABELAS = (
@@ -77,10 +78,12 @@ def _configuracao():
 
 
 def _n8n():
-    url = os.getenv("N8N_CADASTRO_WEBHOOK_URL", "").strip()
+    url = url_webhook("N8N_CADASTRO_WEBHOOK_URL")
 
     if not url:
-        raise RuntimeError("N8N_CADASTRO_WEBHOOK_URL não configurada.")
+        raise RuntimeError(
+            "N8N_WEBHOOK_BASE_URL (ou N8N_CADASTRO_WEBHOOK_URL) não configurada."
+        )
 
     partes = urlsplit(url)
     # /healthz é o endpoint de saúde do próprio n8n: não dispara workflow.

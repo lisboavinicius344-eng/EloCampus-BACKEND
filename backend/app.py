@@ -18,6 +18,7 @@ from routes.solicitacoes_acesso import solicitacoes_acesso_bp
 from routes.monitor import monitor_bp
 from routes.lembretes import lembretes_bp
 from routes.relatorios import relatorios_bp
+from routes.administracao import administracao_bp
 
 
 logging.basicConfig(
@@ -65,6 +66,7 @@ app.register_blueprint(solicitacoes_acesso_bp)
 app.register_blueprint(monitor_bp)
 app.register_blueprint(lembretes_bp)
 app.register_blueprint(relatorios_bp)
+app.register_blueprint(administracao_bp)
 app.register_blueprint(painel_bp)
 
 

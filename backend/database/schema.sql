@@ -174,6 +174,7 @@ CREATE TABLE solicitacoes_acesso (
     analisado_por   UUID         REFERENCES usuarios (id),
     analisado_em    TIMESTAMPTZ,
     motivo_recusa   TEXT,
+    justificativa   TEXT,
     usuario_id      UUID         REFERENCES usuarios (id),
 
     CONSTRAINT solicitacoes_nome_nao_vazio
