@@ -20,23 +20,43 @@ def test_codigo_da_etiqueta(dados, esperado):
     assert qr_equipamento.codigo(dados) == esperado
 
 
-def test_url_usa_a_variavel_e_escapa_o_codigo(monkeypatch):
+def test_url_curta_com_o_id_no_site_da_consulta(monkeypatch):
+    monkeypatch.delenv("QR_ITEM_URL", raising=False)
     monkeypatch.setenv("QR_CONSULTA_URL", "https://elocampus.com.br/pages/consulta-qr.html")
     url = qr_equipamento.conteudo({"id": 1, "numero_patrimonio": "LAB 01/A", "qr_code": None})
 
-    assert url == "https://elocampus.com.br/pages/consulta-qr.html?codigo=LAB%2001%2FA"
+    assert url == "https://elocampus.com.br/q/1"
+
+
+def test_url_propria_do_item(monkeypatch):
+    monkeypatch.setenv("QR_ITEM_URL", "https://elo.ufob.edu.br/q/")
+
+    assert qr_equipamento.conteudo(EQUIPAMENTO) == "https://elo.ufob.edu.br/q/7"
 
 
 def test_url_padrao(monkeypatch):
+    monkeypatch.delenv("QR_ITEM_URL", raising=False)
     monkeypatch.delenv("QR_CONSULTA_URL", raising=False)
 
-    assert qr_equipamento.conteudo(EQUIPAMENTO).startswith(qr_equipamento.URL_CONSULTA_PADRAO + "?codigo=")
+    assert qr_equipamento.conteudo(EQUIPAMENTO) == "https://elocampus-frontend.a6ti6s.easypanel.host/q/7"
 
 
-def test_qr_lido_de_volta_aponta_para_o_equipamento():
+def test_qr_lido_de_volta_aponta_para_o_id():
     from services.painel_service import PainelService
 
-    assert PainelService._extrair_codigo(qr_equipamento.conteudo(EQUIPAMENTO)) == "PRJ-0017"
+    assert PainelService._extrair_codigo(qr_equipamento.conteudo(EQUIPAMENTO)) == ("7", True)
+
+
+def test_qr_curto_fica_pequeno(monkeypatch):
+    """Endereço curto cabe na versão 3 do QR (29 módulos): legível com 2,5 cm."""
+    import qrcode
+
+    monkeypatch.setenv("QR_CONSULTA_URL", "https://elocampus.com.br/pages/consulta-qr.html")
+    qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M)
+    qr.add_data(qr_equipamento.conteudo({"id": 99999}))
+    qr.make(fit=True)
+
+    assert qr.version <= 3
 
 
 @pytest.mark.parametrize(("formato", "tipo", "inicio"), [("svg", "image/svg+xml", b"<svg"), ("png", "image/png", b"\x89PNG")])

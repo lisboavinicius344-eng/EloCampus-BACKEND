@@ -240,15 +240,48 @@ def test_consulta_qr_so_mostra_emprestimo_para_equipe(
 
     assert resposta.status_code == 200
     assert consultar.call_args.kwargs["incluir_emprestimo"] is inclui_emprestimo
+    assert consultar.call_args.kwargs["por_id"] is False
+
+
+def test_consulta_qr_por_id(cliente):
+    with patch(
+        "routes.painel.painel_service.consultar_qr",
+        return_value={"equipamento": {"id": 36}, "emprestimo": None},
+    ) as consultar:
+        resposta = cliente.get("/api/consulta-qr/36?por=id")
+
+    assert resposta.status_code == 200
+    assert consultar.call_args.kwargs["por_id"] is True
+
+
+def test_consulta_por_id_nao_procura_patrimonio():
+    from unittest.mock import MagicMock
+    from services.painel_service import PainelService
+
+    cursor = MagicMock()
+    cursor.fetchone.return_value = None
+    conexao = MagicMock()
+    conexao.__enter__.return_value = conexao
+    conexao.cursor.return_value.__enter__.return_value = cursor
+
+    with patch("services.painel_service.Conexao.conectar", return_value=conexao):
+        PainelService().consultar_qr("https://elocampus.com.br/q/36")
+
+    assert cursor.execute.call_args.args[1] == {"termo": None, "id": 36}
+
+    with pytest.raises(ValueError):
+        PainelService().consultar_qr("abc", por_id=True)
 
 
 @pytest.mark.parametrize(
     ("codigo", "esperado"),
     [
-        ("  PAT-001 ", "PAT-001"),
-        ("https://elocampus.com.br/pages/consulta-qr.html?codigo=PAT-9", "PAT-9"),
-        ("https://elocampus.com.br/equipamentos/PAT-7", "PAT-7"),
-        ("https://x.com/?id=15", "15"),
+        ("  PAT-001 ", ("PAT-001", False)),
+        ("https://elocampus.com.br/pages/consulta-qr.html?codigo=PAT-9", ("PAT-9", False)),
+        ("https://elocampus.com.br/equipamentos/PAT-7", ("PAT-7", False)),
+        ("https://x.com/?id=15", ("15", True)),
+        ("https://elocampus.com.br/q/36", ("36", True)),
+        ("36", ("36", False)),
     ],
 )
 def test_extrai_codigo_do_qr(codigo, esperado):

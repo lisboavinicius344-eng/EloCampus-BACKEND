@@ -1,12 +1,14 @@
 """QR Code das etiquetas dos equipamentos.
 
-O QR Code grava a URL da consulta pública com o código do equipamento:
-a câmera do celular abre a página direto, e a leitura dentro do sistema
-também entende a URL (painel_service._extrair_codigo).
+O QR Code grava um endereço curto com o ID do equipamento
+(ex.: https://elocampus.com.br/q/36). O site leva a pessoa ao item dentro
+do sistema, e a leitura dentro do sistema também entende o endereço
+(painel_service._extrair_codigo). Endereço curto = QR com menos
+quadradinhos, que continua legível impresso pequeno.
 """
 import io
 import os
-from urllib.parse import quote
+from urllib.parse import urlsplit
 
 import qrcode
 import qrcode.image.svg
@@ -37,15 +39,30 @@ def codigo(equipamento):
     return str(equipamento["id"])
 
 
+def url_item():
+    """Início do endereço gravado no QR (variável QR_ITEM_URL).
+
+    Sem valor, usa o mesmo site de QR_CONSULTA_URL com o caminho /q.
+    """
+    propria = os.getenv("QR_ITEM_URL", "").strip()
+
+    if propria:
+        return propria.rstrip("/")
+
+    partes = urlsplit(url_consulta())
+    return f"{partes.scheme}://{partes.netloc}/q"
+
+
 def conteudo(equipamento):
-    base = url_consulta()
-    separador = "&" if "?" in base else "?"
-    return f"{base}{separador}codigo={quote(codigo(equipamento), safe='')}"
+    """Endereço gravado no QR: url_item() + "/" + ID do equipamento."""
+    return f"{url_item()}/{int(equipamento['id'])}"
 
 
 def gerar(texto, formato="svg"):
     """Retorna (bytes, tipo) da imagem do QR Code."""
-    qr = qrcode.QRCode(error_correction=ERROR_CORRECT_M, box_size=10, border=4)
+    # Margem de 2 módulos: suficiente para a câmera do celular e deixa a
+    # etiqueta pequena (a página de etiquetas ainda dá espaço em volta).
+    qr = qrcode.QRCode(error_correction=ERROR_CORRECT_M, box_size=10, border=2)
     qr.add_data(texto)
     qr.make(fit=True)
 

@@ -57,15 +57,22 @@ class PainelService:
             "inativos": registro[5],
         }
 
-    def consultar_qr(self, codigo, incluir_emprestimo=False):
-        termo = self._extrair_codigo(codigo)
+    def consultar_qr(self, codigo, incluir_emprestimo=False, por_id=False):
+        termo, so_id = self._extrair_codigo(codigo)
+        so_id = so_id or por_id
 
         if not termo:
             raise ValueError(
                 "Informe o patrimônio, identificador ou QR Code."
             )
 
+        if so_id and not termo.isdigit():
+            raise ValueError("O identificador do equipamento deve ser um número.")
+
         equipamento_id = int(termo) if termo.isdigit() else None
+        # Com o ID explícito (etiqueta nova /q/<id>), não procura por QR
+        # nem patrimônio: o patrimônio "36" não pode tomar o lugar do ID 36.
+        termo_texto = None if so_id else termo
 
         with Conexao.conectar() as conexao:
             with conexao.cursor() as cursor:
@@ -85,18 +92,18 @@ class PainelService:
                         e.imagem_atualizada_em
                     FROM equipamentos e
                     JOIN categorias c ON c.id = e.categoria_id
-                    WHERE e.qr_code = %(termo)s
-                       OR LOWER(e.numero_patrimonio) = LOWER(%(termo)s)
+                    WHERE e.qr_code = %(termo)s::text
+                       OR LOWER(e.numero_patrimonio) = LOWER(%(termo)s::text)
                        OR e.id = %(id)s
                     ORDER BY
                         CASE
-                            WHEN e.qr_code = %(termo)s THEN 0
-                            WHEN LOWER(e.numero_patrimonio) = LOWER(%(termo)s)
+                            WHEN e.qr_code = %(termo)s::text THEN 0
+                            WHEN LOWER(e.numero_patrimonio) = LOWER(%(termo)s::text)
                                 THEN 1
                             ELSE 2
                         END
                     LIMIT 1
-                """, {"termo": termo, "id": equipamento_id})
+                """, {"termo": termo_texto, "id": equipamento_id})
                 registro = cursor.fetchone()
 
                 if registro is None:
@@ -154,7 +161,11 @@ class PainelService:
 
     @staticmethod
     def _extrair_codigo(codigo):
-        """Aceita o código puro ou uma URL gravada no QR Code."""
+        """Aceita o código puro ou uma URL gravada no QR Code.
+
+        Retorna (termo, so_id). so_id é True quando o código traz o ID do
+        equipamento de forma explícita: etiqueta nova (.../q/36) ou ?id=36.
+        """
         bruto = str(codigo or "").strip()
         url = urlparse(bruto)
 
@@ -163,9 +174,13 @@ class PainelService:
 
             for nome in PARAMETROS_DO_QR:
                 if parametros.get(nome):
-                    return parametros[nome][0].strip()
+                    return parametros[nome][0].strip(), nome == "id"
 
             partes = [parte for parte in url.path.split("/") if parte]
-            return partes[-1].strip() if partes else ""
 
-        return bruto
+            if len(partes) >= 2 and partes[-2] == "q":
+                return partes[-1].strip(), True
+
+            return (partes[-1].strip() if partes else ""), False
+
+        return bruto, False

@@ -1,4 +1,4 @@
-from flask import Blueprint, g, jsonify
+from flask import Blueprint, g, jsonify, request
 
 from services.auth_token import (
     PAPEIS_EQUIPE,
@@ -32,7 +32,10 @@ def consulta_qr(codigo):
 
     try:
         resultado = painel_service.consultar_qr(
-            codigo, incluir_emprestimo=equipe
+            codigo,
+            incluir_emprestimo=equipe,
+            # ?por=id: o código é o ID do equipamento (etiqueta /q/<id>).
+            por_id=request.args.get("por") == "id",
         )
     except ValueError as erro:
         return jsonify({"erro": str(erro)}), 400

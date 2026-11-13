@@ -348,6 +348,10 @@ Devolve os números diretamente (sem embrulho):
 
 ### `GET /consulta-qr/<codigo>` — público
 
+Com `?por=id`, o código é o **ID** do equipamento e só o ID é procurado
+(é o que a etiqueta `/q/<id>` usa). Um endereço `…/q/<id>` ou `…?id=<id>`
+lido pela câmera também é tratado como ID.
+
 Aceita o **QR Code**, o **número de patrimônio** (sem diferenciar
 maiúsculas) ou o **ID**. Também aceita a URL gravada no QR Code: usa os
 parâmetros `codigo`, `patrimonio`, `qr` ou `id`, ou o último trecho do
@@ -474,18 +478,18 @@ Imagem do QR Code da etiqueta. Pública pelo mesmo motivo da foto: a tag
 
 - `?formato=svg` (padrão) ou `?formato=png`; `?baixar=1` faz o navegador
   baixar o arquivo (`qrcode-<código>.svg`).
-- O QR grava a **URL da consulta pública** com o código do equipamento,
-  por exemplo
-  `https://…/pages/consulta-qr.html?codigo=PRJ-0017`: a câmera do celular
-  abre a página direto, e a leitura dentro do sistema entende a URL.
-- O código é o `qr_code` do equipamento; sem ele, o patrimônio; sem os
-  dois, o ID.
-- O endereço da página vem da variável `QR_CONSULTA_URL` do backend.
-  **Etiqueta impressa não muda**: defina o endereço definitivo antes de
-  imprimir.
+- O QR grava um **endereço curto com o ID** do equipamento, por exemplo
+  `https://…/q/36`. O site (Nginx) leva esse endereço à página do item
+  dentro do sistema; a leitura dentro do sistema também entende o
+  endereço. Endereço curto = QR com poucos módulos, legível com **2,5 cm**.
+- O início do endereço vem de `QR_ITEM_URL`; sem ela, o mesmo site de
+  `QR_CONSULTA_URL` com o caminho `/q`. **Etiqueta impressa não muda**:
+  defina o endereço definitivo antes de imprimir, e imprima depois de
+  "Zerar dados" (ele reinicia os IDs).
+- Etiquetas antigas (`consulta-qr.html?codigo=…`) continuam funcionando.
 - O objeto equipamento traz `qr_imagem_url` (relativa à base da API, como
   `imagem_url`) e `qr_url` (o endereço gravado no QR).
-- O SVG tem 37 mm de lado por padrão; na impressão, use pelo menos 25 mm.
+- A imagem tem margem branca de 2 módulos.
 - 404 se o equipamento não existir; 400 para formato inválido.
 
 ### `GET /equipamentos/<id>/imagem` — público
